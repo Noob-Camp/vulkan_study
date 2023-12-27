@@ -1,0 +1,325 @@
+<mxfile host="app.diagrams.net" modified="2023-12-18T11:19:17.185Z" agent="Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0" etag="gVXTMHaW2inU-eQVaWRl" version="22.1.11" type="device">
+  <diagram name="第 1 页" id="nm10Agghbu5x6F8gLD8S">
+    <mxGraphModel dx="3502" dy="1382" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-1" value="&lt;div&gt;初始化&lt;/div&gt;&lt;div&gt;MainWindow&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1200" y="-160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-2" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1120" y="-50" as="sourcePoint" />
+            <mxPoint x="-1140" y="-40" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1140" y="-80" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-4" value="&lt;div&gt;初始化&lt;/div&gt;&lt;div&gt;Device&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1200" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-5" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-4" target="eQlVE8_HCKpwt0Nvmz1c-6" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1040" y="10" as="sourcePoint" />
+            <mxPoint x="-1140" y="80" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-6" value="&lt;div&gt;初始化&lt;/div&gt;&lt;div&gt;Render&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1200" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-7" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-6" target="eQlVE8_HCKpwt0Nvmz1c-8" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1040" y="140" as="sourcePoint" />
+            <mxPoint x="-1140" y="200" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-8" value="&lt;div&gt;初始化&lt;/div&gt;&lt;div&gt;DescriptorPool&lt;/div&gt;&lt;div&gt;创建描述符池&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1200" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-9" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-8" target="eQlVE8_HCKpwt0Nvmz1c-10" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1040" y="140" as="sourcePoint" />
+            <mxPoint x="-1140" y="320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-10" value="&lt;div&gt;加载 GameObjects&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1200" y="320" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-12" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-1" target="eQlVE8_HCKpwt0Nvmz1c-14" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-910" y="100" as="sourcePoint" />
+            <mxPoint x="-1020" y="-130" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1040" y="-130" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-14" value="初始化 glfw、创建窗口、设置窗口缩放回调函数" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1000" y="-160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-15" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-4" target="eQlVE8_HCKpwt0Nvmz1c-16" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-890" y="40" as="sourcePoint" />
+            <mxPoint x="-1000" y="-10" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-16" value="&lt;div&gt;创建&lt;/div&gt;&lt;div&gt;VkInstance&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1000" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-18" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-16" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-710" y="-60" as="sourcePoint" />
+            <mxPoint x="-840" y="-10" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-19" value="&lt;div&gt;创建&lt;/div&gt;&lt;div&gt;Surface&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-840" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-21" value="创建 VkCommandPool" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-520" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-22" value="创建新交换链，把旧交换链赋值给它的指定句柄" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-800" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-23" value="&lt;div&gt;创建&lt;/div&gt;&lt;div&gt;VkCommndBuffer&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1000" y="170" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-24" value="&lt;div&gt;创建&lt;/div&gt;&lt;div&gt;VkDevice&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-680" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-25" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-720" y="-10.5" as="sourcePoint" />
+            <mxPoint x="-680" y="-10.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-26" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-560" y="-10.5" as="sourcePoint" />
+            <mxPoint x="-520" y="-10.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-27" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1080" y="109.5" as="sourcePoint" />
+            <mxPoint x="-1000" y="109.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-28" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-30" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-870" y="260" as="sourcePoint" />
+            <mxPoint x="-940" y="170" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-29" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-880" y="109.5" as="sourcePoint" />
+            <mxPoint x="-800" y="109.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-30" value="&lt;div&gt;重建&lt;/div&gt;&lt;div&gt;VkSwapChain&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1000" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-38" value="创建同步信号量" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-800" y="460" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-39" value="&lt;div&gt;创建&lt;/div&gt;&lt;div&gt;FrameBuffer&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-800" y="360" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-40" value="&lt;div&gt;创建 RenderPass,设置 depthAttachment 和 colorAttachment 属性&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-820" y="260" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-41" value="&lt;div&gt;创建交换链的&lt;/div&gt;&lt;div&gt;ImageView&lt;br&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-800" y="170" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-42" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-22" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-690" y="190" as="sourcePoint" />
+            <mxPoint x="-740" y="170" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-43" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-41" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-720" y="299.5" as="sourcePoint" />
+            <mxPoint x="-740" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-44" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-40" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-680" y="370" as="sourcePoint" />
+            <mxPoint x="-740" y="360" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-45" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-740.5" y="420" as="sourcePoint" />
+            <mxPoint x="-740.5" y="460" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-46" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1260.5" y="-360" as="sourcePoint" />
+            <mxPoint x="-1260.5" y="-300" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1260.5" y="-340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-49" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;" parent="1" target="eQlVE8_HCKpwt0Nvmz1c-1" edge="1" source="eQlVE8_HCKpwt0Nvmz1c-50">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1230" y="-240" as="sourcePoint" />
+            <mxPoint x="-760" y="-260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-50" value="&lt;div&gt;初始化&lt;/div&gt;&lt;div&gt;RealTimeBox::Application app {}&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1360" y="-300" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-51" value="项目启动" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1320" y="-420" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-52" value="结束" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1440" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-53" value="设置 DescriptorSet" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1640" y="-40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-54" value="程序循环" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1440" y="-160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-55" value="创建 UboBuffer,存储全局 Uniform 信息" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1640" y="-160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-56" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-50" target="eQlVE8_HCKpwt0Nvmz1c-54" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1570" y="-260" as="sourcePoint" />
+            <mxPoint x="-1480" y="-180" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-57" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1381" y="-100" as="sourcePoint" />
+            <mxPoint x="-1381" y="-40" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1381" y="-80" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-60" value="" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-54" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1590" y="-60" as="sourcePoint" />
+            <mxPoint x="-1520" y="-130" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-61" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1580.5" y="-100" as="sourcePoint" />
+            <mxPoint x="-1580.5" y="-40" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1580.5" y="-80" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-62" value="&lt;div&gt;创建 SimpleRender System&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1640" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-63" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1580.5" y="20" as="sourcePoint" />
+            <mxPoint x="-1580.5" y="80" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-64" value="创建 Camera" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1640" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-65" value="循环、直到窗口被关闭" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1640" y="320" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-66" value="glfw 分发窗口事件" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1880" y="-160" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-67" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1580.5" y="140" as="sourcePoint" />
+            <mxPoint x="-1580.5" y="200" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-68" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1580.5" y="260" as="sourcePoint" />
+            <mxPoint x="-1580.5" y="320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-69" value="" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classic;html=1;curved=0;rounded=0;endSize=8;startSize=8;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-65" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1480" y="360" as="sourcePoint" />
+            <mxPoint x="-1580" y="290" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1490" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-70" value="" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classic;html=1;curved=0;rounded=0;endSize=8;startSize=8;exitX=0;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-65" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1750" y="315" as="sourcePoint" />
+            <mxPoint x="-1760" y="-130" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-1700" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-73" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1820.59" y="-100" as="sourcePoint" />
+            <mxPoint x="-1821" y="-60" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-74" value="&lt;div&gt;渲染器 EndSwapChainRenderPass&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1900" y="320" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-75" value="渲染物体，把相关的资源 bind 到管线，执行 draw" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1880" y="220" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-76" value="渲染器BeginSwapChainRenderPass" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1902.5" y="120" width="165" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-80" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-77" target="eQlVE8_HCKpwt0Nvmz1c-76" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-77" value="渲染器 BeginFrame：接受交换链下一张图像，开始记录 Command Buffer" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1880" y="30" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-78" value="更新游戏逻辑" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1880" y="-60" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-79" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-78" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1820.59" y="20" as="sourcePoint" />
+            <mxPoint x="-1820" y="30" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-81" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="eQlVE8_HCKpwt0Nvmz1c-76" target="eQlVE8_HCKpwt0Nvmz1c-75" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-1820.59" y="260" as="sourcePoint" />
+            <mxPoint x="-1820.59" y="320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-85" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1820.59" y="280" as="sourcePoint" />
+            <mxPoint x="-1820" y="320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-86" value="&lt;div&gt;一帧结束&lt;/div&gt;&lt;div&gt;EndFrame&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="-1880" y="420" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="eQlVE8_HCKpwt0Nvmz1c-87" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="-1820.1799999999998" y="380" as="sourcePoint" />
+            <mxPoint x="-1821" y="420" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
