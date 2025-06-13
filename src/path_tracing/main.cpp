@@ -16,20 +16,66 @@ const std::vector<const char*> instance_extensions = { VK_EXT_DEBUG_UTILS_EXTENS
 const std::vector<const char*> logical_device_extensions = { VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME };
 
 
+struct PushConstantData {
+    glm::ivec2 screen_size;
+    std::uint32_t hittableCount;
+    std::uint32_t sample_start;
+    std::uint32_t samples;
+    std::uint32_t total_samples;
+    std::uint32_t max_depth;
+};
+
 class PathTracingCornellBox {
     VkInstance instance;
     VkDebugUtilsMessengerEXT debug_messenger;
 
-	VkPhysicalDevice physical_device;
-	std::optional<std::uint32_t> queue_family_index;
-	VkDevice logical_device;
-	VkQueue queue;
+    VkPhysicalDevice physical_device;
+    std::optional<std::uint32_t> queue_family_index;
+    VkDevice logical_device;
+    VkQueue queue;
 
-    VkBuffer uniform_buffer;
-	VkDeviceMemory uniform_buffer_memory;
-	std::array<VkBuffer, 5uz> storage_buffers;
-	std::array <VkDeviceMemory, 5uz> storage_buffer_memorys;
+    std::vector<float> output_image;
+    std::vector<float> seed_image;
+    std::array<VkBuffer, 2uz> uniform_buffers;
+    std::array<VkDeviceMemory, 2uz> uniform_buffer_memorys;
+
     std::vector<float> vertices;
+    std::array<VkBuffer, 5uz> storage_buffers;
+    std::array <VkDeviceMemory, 5uz> storage_buffer_memorys;
+
+    std::array<VkDescriptorSetLayout, 2uz> descriptor_set_layouts;
+
+    PushConstantData push_constant_data;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline compute_pipeline;
+
+    VkDescriptorPool descriptor_pool;
+    std::array<VkDescriptorSet, 2uz> descriptor_sets;
+
+    VkCommandPool command_pool;
+    VkCommandBuffer command_buffer;
+
+    ~PathTracingCornellBox() {
+        vkDestroyCommandPool(logical_device, command_pool, nullptr);
+        vkDestroyDescriptorPool(logical_device, descriptor_pool, nullptr);
+        vkDestroyPipeline(logical_device, compute_pipeline, nullptr);
+        vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
+        for (std::size_t i = 0uz; i < descriptor_set_layouts.size(); ++i) {
+            vkDestroyDescriptorSetLayout(logical_device, descriptor_set_layouts[i], nullptr);
+        }
+
+        for (std::size_t i = 0uz; i < storageBuffers.size(); ++i) {
+            vkDestroyBuffer(logical_device, storage_buffers[i], nullptr);
+            vkFreeMemory(logical_device, storage_buffer_memorys[i], nullptr);
+        }
+
+        vkDestroyBuffer(logical_device, uniform_buffer, nullptr);
+        vkFreeMemory(logical_device, uniform_buffer_memory, nullptr);
+
+        MuVk::Proxy::destoryDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        vkDestroyDevice(logical_device, nullptr);
+        vkDestroyInstance(instance, nullptr);
+    }
 
     void run() {
         if (!check_validation_layer_support()) {
@@ -40,10 +86,22 @@ class PathTracingCornellBox {
         pick_physcial_device();
         create_logical_device();
 
-        create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniform_buffer, uniform_buffer_memory);
+        for (std::size_t i = 0uz; i < uniform_buffers.size(); ++i) {
+            create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniform_buffers[i], uniform_buffer_memorys[i]);
+        }
         for (std::size_t i = 0uz; i < storage_buffers.size(); ++i) {
             create_buffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, storage_buffers[i], storage_buffer_memorys[i]);
         }
+
+        write_memory(uniform_buffer_memorys[0], output_image.data(), output_image.size());
+        write_memory(uniform_buffer_memorys[1], seed_image.data(), seed_image.size());
+
+        create_descriptor_set_layout();
+        create_compute_pipeline();
+
+        create_descriptor_pool();
+        create_descriptor_set();
+        create_command_pool();
     }
 
     void create_instance() {
@@ -110,8 +168,8 @@ class PathTracingCornellBox {
         }
         auto properties = query_physical_device_properties(physical_device);
         std::cout << "maxComputeWorkGroupInvocations:" << properties.limits.maxComputeWorkGroupInvocations << std::endl;
-        computeShaderProcessUnit = sqrt(properties.limits.maxComputeWorkGroupInvocations);
-	}
+        compute_shader_process_unit = sqrt(properties.limits.maxComputeWorkGroupInvocations);
+    }
 
     void create_logical_device() {
         auto priority { 1.0f }; // default
@@ -162,10 +220,10 @@ class PathTracingCornellBox {
             throw std::runtime_error("failed to create buffer!");
         }
 
-		VkMemoryRequirements requirements = query_memory_requirements(logical_device, buffer);
-		std::cout << requirements << std::endl;
+        VkMemoryRequirements requirements = query_memory_requirements(logical_device, buffer);
+        std::cout << requirements << std::endl;
 
-		VkMemoryAllocateInfo memory_allocate_info {
+        VkMemoryAllocateInfo memory_ai {
             .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
             .pNext = nullptr,
             .allocationSize = requirements.size,
@@ -177,15 +235,15 @@ class PathTracingCornellBox {
             )
         };
 
-		if (
-            VkResult result = vkAllocateMemory(logical_device, &memory_allocate_info, nullptr, &memory);
+        if (
+            VkResult result = vkAllocateMemory(logical_device, &memory_ai, nullptr, &memory);
             result != VK_SUCCESS
         ) {
-			throw std::runtime_error("failed to allocate buffer memory");
+            throw std::runtime_error("failed to allocate buffer memory");
         }
 
-		vkBindBufferMemory(logical_device, buffer, memory, 0u);
-	}
+        vkBindBufferMemory(logical_device, buffer, memory, 0u);
+    }
 
     void prepare_scene_data() {
         tinyobj::ObjReaderConfig obj_reader_config;
@@ -242,6 +300,237 @@ class PathTracingCornellBox {
         }
         memcpy(data, dataBlock, size);
         vkUnmapMemory(device, memory);
+    }
+
+    void create_descriptor_set_layout() {
+        {
+            std::array<VkDescriptorSetLayoutBinding, 2uz> descriptor_set_layout_bindings;
+            for (std::size_t i = 0uz; i < bindings.size(); ++i) {
+                VkDescriptorSetLayoutBinding descriptor_set_layout_binding {
+                    .binding = static_cast<std::uint32_t>(i),
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1u,
+                    .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                    .pImmutableSamplers = nullptr
+                };
+                descriptor_set_layout_bindings[i] = descriptor_set_layout_binding;
+            }
+
+            VkDescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0u,
+                .bindingCount = descriptor_set_layout_bindings.size(),
+                .pBindings = descriptor_set_layout_bindings.data()
+            };
+
+            if (
+                VkResult result = vkCreateDescriptorSetLayout(device, &descriptor_set_layout_ci, nullptr, &descriptor_set_layouts[1]);
+                result != VK_SUCCESS
+            ) {
+                throw std::runtime_error("failed to create descriptorSetLayout");
+            }
+        }
+        {
+            std::array<VkDescriptorSetLayoutBinding, 5uz> descriptor_set_layout_bindings;
+            for (std::size_t i = 0uz; i < descriptor_set_layout_bindings.size(); ++i) {
+                VkDescriptorSetLayoutBinding descriptor_set_layout_binding {
+                    .binding = static_cast<std::uint32_t>(i),
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .descriptorCount = 1u,
+                    .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                    .pImmutableSamplers = nullptr
+                };
+                descriptor_set_layout_bindings[i] = descriptor_set_layout_binding;
+            }
+
+            VkDescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0u,
+                .bindingCount = descriptor_set_layout_bindings.size(),
+                .pBindings = descriptor_set_layout_bindings.data()
+            };
+
+            if (
+                VkResult result = vkCreateDescriptorSetLayout(device, &descriptor_set_layout_ci, nullptr, &descriptor_set_layouts[0uz]);
+                result != VK_SUCCESS
+            ) {
+                throw std::runtime_error("failed to create descriptorSetLayout");
+            }
+        }
+    }
+
+    VkShaderModule create_shader_module(const std::vector<char>& code) {
+        VkShaderModule shader_module;
+        VkShaderModuleCreateInfo shader_module_ci {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0u,
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
+        };
+        if (
+            VkResult result = vkCreateShaderModule(logical_device, &shader_module_ci, nullptr, &shader_module);
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("fail to create shader module");
+        }
+
+        return shader_module;
+    }
+
+    void create_compute_pipeline() {
+        auto compute_shader_code = read_shader_file(MU_SHADER_PATH "./src/path_tracing/path_tracing_kernel.spv");
+        auto compute_shader_module = create_shader_module(compute_shader_code);
+
+        VkSpecializationMapEntry specialization_map_entry {
+            .constantID = 0,
+            .offset = 0,
+            .size = sizeof(uint32_t)
+        };
+
+        VkSpecializationInfo specialization_ci {
+            .mapEntryCount = 1u,
+            .pMapEntries = &specialization_map_entry,
+            .dataSize = sizeof(compute_shader_process_unit),
+            .pData = &compute_shader_process_unit
+        };
+
+        VkPipelineShaderStageCreateInfo pipeline_shader_stage_ci {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0u,
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .module = compute_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = &specialization_ci
+        };
+
+        VkPushConstantRange push_constant_range {
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+            .offset = 0u,
+            .size = sizeof(PushConstantData)
+        };
+
+        VkPipelineLayoutCreateInfo pipeline_layout_ci {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0u,
+            .setLayoutCount = descriptor_set_layouts.size(),
+            .pSetLayouts = descriptor_set_layouts.data(),
+            .pushConstantRangeCount = 1u;
+            .pPushConstantRanges = &push_constant_range;
+        };
+        if (
+            VkResult result = vkCreatePipelineLayout(device, &pipeline_layout_ci, nullptr, &pipeline_layout)
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create pipeline layout!");
+        }
+
+        VkComputePipelineCreateInfo compute_pipeline_ci {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0u,
+            .stage = pipeline_shader_stage_ci,
+            .layout = pipeline_layout,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = -1
+        };
+
+        if (
+            VkResult result = vkCreateComputePipelines(device, nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline);
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create compute pipeline");
+        }
+
+        vkDestroyShaderModule(logical_device, computeShaderModule, nullptr);
+    }
+
+    void create_descriptor_pool() {
+        std::array<VkDescriptorPoolSize, 2uz> descriptor_pool_sizes;
+        {
+            VkDescriptorPoolSize descriptor_pool_size {
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1u
+            };
+            descriptor_pool_sizes[0] = descriptor_pool_size;
+        }
+        {
+            VkDescriptorPoolSize descriptor_pool_size {
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1u + 2u + 2u
+            };
+            descriptor_pool_sizes[1] = descriptor_pool_size;
+        }
+
+        VkDescriptorPoolCreateInfo descriptor_pool_ci {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0u,
+            .maxSets = 2u,
+            .poolSizeCount = descriptor_pool_sizes.size(),
+            .pPoolSizes = descriptor_pool_sizes.data()
+        };
+
+        if (
+            VkReuslt result = vkCreateDescriptorPool(device, &descriptor_pool_ci, nullptr, &descriptor_pool);
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void create_descriptor_set() {
+        VkDescriptorSetAllocateInfo descriptor_set_ai {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .descriptorPool = descriptor_pool,
+            .descriptorSetCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data()
+        };
+
+        if (
+            VkResult result = vkAllocateDescriptorSets(device, &descriptor_set_ai, descriptor_sets.data());
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create descriptor set!");
+        }
+
+        // TODO
+    }
+
+    void create_command_pool() {
+        VkCommandPoolCreateInfo command_pool_ci {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            .queueFamilyIndex = queue_family_index.value()
+        };
+        if (
+            VkResult result = vkCreateCommandPool(device, &command_pool_ci, nullptr, &command_pool);
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create command pool!");
+        }
+    }
+
+    void create_command_buffer() {
+        VkCommandBufferAllocateInfo command_buffer_ai {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .commandPool = command_pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1u
+        };
+        if (
+            VkResult result = vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer)
+            result != VK_SUCCESS
+        ) {
+            throw std::runtime_error("failed to create command buffer!");
+        }
     }
 }
 
@@ -312,6 +601,20 @@ VkResult createDebugUtilsMessengerEXT(
     }
 }
 
+void destoryDebugUtilsMessengerEXT(
+    VkInstance instance,
+    VkDebugUtilsMessengerEXT messenger,
+    const VkAllocationCallbacks* pAllocator
+) {
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
+        vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func) {
+        func(instance, messenger, pAllocator);
+    } else {
+        throw std::runtime_error("can't find proc");
+    }
+}
+
 std::vector<VkExtensionProperties> query_instance_extension_properties() {
     std::uint32_t extension_count { 0u };
     vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
@@ -352,6 +655,19 @@ VkPhysicalDeviceMemoryProperties query_physical_device_memory_properties(VkPhysi
     VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
     vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
     return physical_device_memory_properties;
+}
+
+std::vector<char> read_shader_file(const std::string& filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) { throw std::runtime_error("failed to open file!"); }
+
+    std::size_t file_size = static_cast<std::size_t>(file.tellg());
+    std::vector<char> buffer(file_size);
+    file.seekg(0);
+    file.read(buffer.data(), file_size);
+    file.close();
+
+    return buffer;
 }
 
 
