@@ -22,7 +22,7 @@ int main() {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Hello Vulkan Window", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Hello GLFW Window", nullptr, nullptr);
 
     // test GLM API
     auto vec = glm::vec4(1.0f, 2.0f, 3.0f, 1.0f);
@@ -59,7 +59,7 @@ int main() {
     create_instance();
 
     while (!glfwWindowShouldClose(window)) {
-        processInput(window);
+        handle_input(window);
         glfwPollEvents();
     }
 
@@ -84,7 +84,7 @@ void create_instance() {
     VkApplicationInfo appInfo {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext = nullptr,
-        .pApplicationName = "Hello Triangle",
+        .pApplicationName = "Hello Vulkan",
         .applicationVersion = VK_MAKE_VERSION(1, 3, 0),
         .pEngineName = "No Engine",
         .engineVersion = VK_MAKE_VERSION(1, 3, 0),
@@ -105,10 +105,10 @@ void create_instance() {
         .ppEnabledExtensionNames = glfwExtensions
     };
 
-    if (vkCreateInstance(&createInfo, nullptr, &instance) != vk::Result::eSuccess) {
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
         minilog::log_fatal("failed to create VkInstance!");
     }
-    minilog::log_info("successfully created Vulkan instance");
+    minilog::log_info("create Vulkan instance successfully ");
 }
 
 } // namesapce anonymous end

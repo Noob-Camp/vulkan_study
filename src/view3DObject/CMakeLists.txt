@@ -15,3 +15,4 @@ target_link_libraries(
     ${Vulkan_LIBRARIES}
     glfw
 )
+message("Vulkan_LIBRARIES is: " ${Vulkan_LIBRARIES})

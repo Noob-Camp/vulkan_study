@@ -1,13 +1,13 @@
-add_executable(Triangle Triangle.cpp)
+add_executable(helloComputeShader helloComputeShader.cpp)
 
 target_include_directories(
-    Triangle PUBLIC
+    helloComputeShader PUBLIC
     ${Vulkan_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/include
 )
 
 target_link_libraries(
-    Triangle PUBLIC
+    helloComputeShader PUBLIC
     ${Vulkan_LIBRARIES}
-    glfw
 )
+

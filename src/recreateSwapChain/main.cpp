@@ -351,9 +351,9 @@ struct Application {
 
     void setupDebugMessenger() {
         if (!enableValidationLayers) { return; }
-        vk::DynamicLoader dl;
+        vk::detail::DynamicLoader dl;
         PFN_vkGetInstanceProcAddr getInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-        vk::DispatchLoaderDynamic dispatch(instance, getInstanceProcAddr);
+        vk::detail::DispatchLoaderDynamic dispatch(instance, getInstanceProcAddr);
         if (instance.createDebugUtilsMessengerEXT(&debugCreateInfo, nullptr, &debugMessenger, dispatch) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to set up debug messenger!");
         }
@@ -682,8 +682,8 @@ struct Application {
     }
 
     void createGraphicsPipeline() {
-        std::vector<char> vertCode = readFile("../../src/Triangle/shaders/vert.spv");
-        std::vector<char> fragCode = readFile("../../src/Triangle/shaders/frag.spv");
+        std::vector<char> vertCode = readFile("./src/recreateSwapChain/shaders/vert.spv");
+        std::vector<char> fragCode = readFile("./src/recreateSwapChain/shaders/frag.spv");
         vk::ShaderModule vertShaderModule = createShaderModule(vertCode);
         vk::ShaderModule fragShaderModule = createShaderModule(fragCode);
 
@@ -763,7 +763,7 @@ struct Application {
         graphicsPipelineCreateInfo.pMultisampleState = &multisampleStateInfo;///
 
         vk::PipelineDepthStencilStateCreateInfo depthStencilStateInfo {};
-        //depthStencilStateInfo.flags = 
+        //depthStencilStateInfo.flags =
         depthStencilStateInfo.depthTestEnable = vk::Bool32(VK_TRUE);
         depthStencilStateInfo.depthWriteEnable = vk::Bool32(VK_TRUE);
         depthStencilStateInfo.depthCompareOp = vk::CompareOp::eLess;
@@ -777,8 +777,8 @@ struct Application {
 
         vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.blendEnable = vk::Bool32(VK_FALSE);
-        // colorBlendAttachment.srcColorBlendFactor = 
-        // colorBlendAttachment.dstColorBlendFactor = 
+        // colorBlendAttachment.srcColorBlendFactor =
+        // colorBlendAttachment.dstColorBlendFactor =
         // colorBlendAttachment.colorBlendOp =
         // colorBlendAttachment.srcAlphaBlendFactor =
         // colorBlendAttachment.dstAlphaBlendFactor =
@@ -789,7 +789,7 @@ struct Application {
                                                 | vk::ColorComponentFlagBits::eA;
 
         vk::PipelineColorBlendStateCreateInfo colorBlendStateInfo {};
-        //colorBlendStateInfo.flags = 
+        //colorBlendStateInfo.flags =
         colorBlendStateInfo.logicOpEnable = vk::Bool32(VK_FALSE);
         colorBlendStateInfo.logicOp = vk::LogicOp::eCopy;
         colorBlendStateInfo.attachmentCount = 1;
@@ -970,7 +970,7 @@ struct Application {
                 return avaiablePresentMode;
             }
         }
-        
+
         return vk::PresentModeKHR::eFifo;
     }
 
@@ -1005,7 +1005,7 @@ struct Application {
     }
 
     bool checkPhysicalDeviceExtensionSupport(vk::PhysicalDevice physicalDevice_) {
-        std::vector<vk::ExtensionProperties> availableExtensions = 
+        std::vector<vk::ExtensionProperties> availableExtensions =
             physicalDevice_.enumerateDeviceExtensionProperties(nullptr);
         std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
         for (const auto& extension : availableExtensions) {

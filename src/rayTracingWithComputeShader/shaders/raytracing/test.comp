@@ -1,0 +1,428 @@
+#version 450
+#extension GL_GOOGLE_include_directive: enable
+#extension GL_EXT_debug_printf : enable
+
+#define Pointer uint
+
+
+struct Camera {
+    vec3    origin;
+    vec3    horizontal;
+    vec3    vertical;
+    vec3    lowerLeftCorner;
+
+    float   viewportHeight;
+    float   viewportWidth;
+    float   aspectRatio;
+    float   focalLength;
+
+    vec3    u;
+    vec3    v;
+    vec3    w;
+    float   lensRadius;
+};
+
+struct Hittable {
+    uint type;
+    uint ptr;
+    uint mat;
+};
+
+struct Material  {
+    uint type;
+    uint ptr; 
+};
+struct Lambertian {
+    vec3 albedo; 
+};
+struct Metal {
+    vec3 albedo;
+    float fuzz;
+};
+struct Dielectrics {
+    float ir;
+};
+
+
+const int blockSizeX = 1;
+const int blockSizeY = 1;
+layout (local_size_x = blockSizeX, local_size_y = blockSizeY) in;
+layout (local_size_x_id = 0, local_size_y_id =  0) in;
+
+layout(push_constant, std430) uniform PushConstant {
+    ivec2 screenSize;
+    uint hittableCount;
+    uint sampleStart;
+    uint samples;
+    uint totalSamples;
+    uint maxDepth;
+};
+
+layout(set = 0, binding = 0)
+writeonly buffer TargetBuffer {
+    vec4 pixels[];
+} target;
+
+layout(set = 0, binding = 1, std430)
+readonly buffer MaterialBuffer {
+    Material materials[];
+};
+
+layout(set = 0, binding = 2, std430)
+readonly buffer MaterialDumpBuffer {
+    vec4 data[];
+} materialData;
+
+layout(set = 0, binding = 3, std430)
+readonly buffer HittableBuffer {
+    Hittable hittables[];
+};
+
+layout(set = 0, binding = 4, std430)
+readonly buffer HittableDumpBuffer {
+    vec4 data[];
+} hittableData;
+
+layout(set = 1, binding = 0)
+uniform CameraBuffer {
+    Camera camera;
+};
+
+
+
+
+
+uint state;
+uint stateOrigin;
+uint xor_shift_rand() {
+    state ^= (state << 13);
+    state ^= (state >> 17);
+    state ^= (state << 5);
+    return state;
+}
+void Seed(
+    uvec2 screenCoord, uvec2 screenSize, uint sampleStart
+) {
+	state = uint(
+        screenCoord.x
+        + (screenCoord.y + 1) * screenSize.x
+        + screenSize.x * sampleStart
+    );
+    stateOrigin = state;
+}
+float Rand() {
+    if (state == 0) { state = stateOrigin; }
+    return float(xor_shift_rand()) * (1.0 / 4294967296.0); 
+}
+float Rand(float min_, float max_) { return min_ + Rand() * (max_ - min_); }
+vec2 RandVec2() { return vec2(Rand(),Rand()); }
+vec2 RandVec2(float min_, float max_) { return vec2(Rand(min_,max_),Rand(min_, max_)); }
+vec3 RandVec3() { return vec3(RandVec2(),Rand()); }
+vec3 RandVec3(float min_, float max_) { return vec3(RandVec2(min_,max_),Rand(min_, max_)); }
+vec3 RandUnitBall() {
+    for(int i = 0; i < 10; ++i) {
+        vec3 p = RandVec3(-1,1); 
+        if (dot(p,p) >= 1.0) continue;
+        return p;
+    }
+	return vec3(0,0.999,0);
+}
+vec2 RandDisk() {
+    for (int i = 0; i < 10; ++i) {
+        vec2 p = RandVec2(-1,1); 
+        if (dot(p,p) >= 1.0) continue;
+        return p;
+    }
+	return vec2(0,0.999);
+}
+vec3 RandSemiUnitBall(vec3 normal) {
+    vec3 unitBall = RandUnitBall();
+    if (dot(unitBall, normal) > 0.0) return unitBall;
+    else return -unitBall;
+}
+vec3 RandUnitVector() {
+    return normalize(RandUnitBall());
+}
+
+
+
+
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+vec3 at(Ray ray, float t) { return ray.origin + ray.direction * t; }
+Ray generateRay(Camera camera, float s, float t) {
+    vec3 rd = camera.lensRadius * vec3(RandDisk(),0);
+    vec3 offset = camera.u * rd.x + camera.v * rd.y;
+
+    return Ray(
+            camera.origin + offset, 
+            normalize(camera.lowerLeftCorner 
+            + s * camera.horizontal
+            + t * camera.vertical
+            - camera.origin - offset)
+        );
+}
+
+
+
+
+struct HitRecord  {
+    vec3 p;
+    vec3 normal;
+    float t;
+    bool frontFace;
+    uint mat;
+};
+void setFaceNormal(inout HitRecord record, Ray ray, vec3 outwardNormal)  {
+    record.frontFace = dot(ray.direction, outwardNormal) < 0;
+    record.normal = record.frontFace ? outwardNormal :-outwardNormal;
+}
+
+
+
+
+const struct {
+    uint None;
+    uint TriangleMesh;
+    uint Sphere;
+} HittableEnum = { 0,1,2 };
+
+struct Sphere {
+    vec3    center;
+    float   radius;
+};
+void Deref(out Hittable hittable, Pointer ptr) { hittable = hittables[ptr]; }
+void Deref(Hittable, out vec4 data, Pointer ptr) { data = hittableData.data[ptr];}
+bool Hit(Sphere sphere, Ray ray, float t_min, float t_max, out HitRecord record) {
+    vec3 oc = ray.origin - sphere.center;
+    float a = dot(ray.direction, ray.direction);
+    float half_b = dot(oc, ray.direction);
+    float c = dot(oc,oc) - sphere.radius * sphere.radius;
+
+    float discriminant = half_b * half_b - a * c;
+    if (discriminant < 0) return { false; }
+    float sqrtd = sqrt(discriminant);
+
+    // Find the nearest root that lies in the acceptable range.
+    float root = (-half_b - sqrtd) / a;
+    if (root < t_min || t_max < root) {
+        root = (-half_b + sqrtd) / a;
+        if (root < t_min || t_max < root) {
+            return false;
+        }
+    }
+    
+    record.t = root;
+    record.p = at(ray, record.t);
+    vec3 outwardNormal = (record.p - sphere.center) / sphere.radius;
+    setFaceNormal(record, ray, outwardNormal);
+
+    return true;
+}
+
+//disptacher
+bool Hit(Hittable hittable, Ray ray, float t_min, float t_max, out HitRecord rec) {
+    switch(hittable.type) {
+        case HittableEnum.Sphere:
+            vec4 data;
+            Deref(hittable, data, hittable.ptr);
+            vec3 center =  data.xyz;
+            float radius =  data.w;
+            Sphere sphere = Sphere(center, radius);
+            return Hit(sphere, ray, t_min, t_max, rec);
+        default:
+            return false;
+    }
+}
+
+// entrance
+bool HitAny(uint count, Ray ray, float t_min, float t_max, out HitRecord record) {
+    HitRecord temp_rec;
+    bool hit_anything = false;
+    float closest_so_far = t_max;
+
+    for (int i = 0; i < count; ++i) {
+        Hittable obj;
+        Deref(obj, i);
+        if(Hit(obj, ray, t_min, closest_so_far, temp_rec)) {
+            hit_anything = true;
+            closest_so_far = temp_rec.t;
+            temp_rec.mat = obj.mat;
+            record = temp_rec;
+        }
+    }
+    return hit_anything;
+}
+
+
+
+const struct {
+    uint None;
+    uint Lambertian;
+    uint Metal;
+    uint Dielectrics;
+} MaterialEnum = { 0,1,2,3 };
+
+void Deref(out Material mat, Pointer ptr) { mat = materials[ptr]; }
+void Deref(Material, out vec4 data, Pointer ptr) { data = materialData.data[ptr];}
+void Init(inout Lambertian self, vec3 albedo) { self.albedo = albedo; }
+void Init(inout Metal self, vec3 albedo, float fuzz) {
+    self.albedo = albedo;
+    self.fuzz = fuzz;
+}
+void Init(inout Dielectrics self, float ir) { self.ir = ir; }
+vec3 Refract(vec3 uv, vec3 n, float etai_over_etat) {
+    float cos_theta = min(dot(-uv, n), 1.0);
+    vec3 r_out_perp =  etai_over_etat * (uv + cos_theta*n);
+    vec3 r_out_parallel = -sqrt(abs(1.0 - dot(r_out_perp, r_out_perp))) * n;
+    return r_out_perp + r_out_parallel;
+}
+float Reflectance(float cosine, float ref_idx) {
+    // Use Schlick's approximation for reflectance.
+    float r0 = (1 - ref_idx) / (1 + ref_idx);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * pow((1 - cosine), 5);
+}
+bool near_zero(vec3 v) {
+    // Return true if the vector is close to zero in all dimensions.
+    const float s = 1e-8;
+    return (abs(v[0]) < s) && (abs(v[1]) < s) && (abs(v[2]) < s);
+}
+bool Scatter(
+    Lambertian self, Ray r_in, HitRecord rec,
+    out vec3 attenuation, out Ray scattered
+) {
+    //vec3 scatter_direction = rec.p + RandSemiUnitBall(rec.normal);
+    vec3 scatter_direction = rec.normal + RandUnitBall();
+    if (near_zero(scatter_direction)) scatter_direction = rec.normal;
+    scattered = Ray(rec.p, scatter_direction);
+    attenuation = self.albedo;
+    return true;
+}
+bool Scatter(
+    Metal self, Ray r_in, HitRecord rec,
+    out vec3 attenuation, out Ray scattered
+) {
+    vec3 dir = reflect(r_in.direction, rec.normal);
+    scattered = Ray(rec.p, dir + self.fuzz * RandUnitBall());
+    attenuation = self.albedo;
+    return dot(scattered.direction, rec.normal) > 0;
+}
+bool Scatter(
+    Dielectrics self, Ray r_in, HitRecord rec,
+    out vec3 attenuation, out Ray scattered
+) {
+    attenuation = vec3(1.0, 1.0, 1.0);
+    float refraction_ratio = rec.frontFace ? (1.0 / self.ir) : self.ir;
+    vec3 dir = r_in.direction;
+    
+    float cos_theta = min(dot(-dir, rec.normal), 1.0);
+    float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+
+    bool cannot_refract = refraction_ratio * sin_theta > 1.0;
+    vec3 direction;
+
+    if (cannot_refract || Reflectance(cos_theta, refraction_ratio) > Rand())
+        direction = reflect(dir, rec.normal);
+    else
+        direction = refract(dir, rec.normal, refraction_ratio);
+    
+    scattered = Ray(rec.p, direction);
+    return true;
+}
+bool Scatter(
+    Material self, Ray r, HitRecord rec,
+    out vec3 attenuation, out Ray scattered
+) {
+    switch(self.type) {
+        vec4 data;
+        case MaterialEnum.Lambertian:
+            Lambertian lam;
+            Deref(self, data, self.ptr);
+            Init(lam, data.xyz);
+            return Scatter(lam, r, rec, attenuation, scattered);
+        case MaterialEnum.Metal:
+            Metal met;
+            Deref(self, data, self.ptr);
+            Init(met, data.xyz, data.w);
+            return Scatter(met, r, rec, attenuation, scattered);
+        case MaterialEnum.Dielectrics:
+            Dielectrics dlt;
+            Deref(self, data, self.ptr);
+            Init(dlt, data.x);
+            return Scatter(dlt, r, rec, attenuation, scattered);
+    }
+    return false;
+}
+
+
+
+
+
+vec3 BackgroundColor(Ray r);
+void WriteColor(int x, int y, vec3 color);
+
+vec3 RayColor(Ray ray) {
+    vec3 color = vec3(1.0, 1.0, 1.0);
+    Ray next = ray;
+    int x = 0;
+
+    for (int i = 0; i < maxDepth; ++i) {
+        HitRecord record;
+        if (HitAny(hittableCount, next, 0.001, 10000, record)) {
+            vec3 attenuation = vec3(0.0, 0.0, 0.0);
+            Material mat;
+            Deref(mat, record.mat);   
+            if(Scatter(mat, next, record, attenuation, next))
+                color *= attenuation;
+            else return vec3(0);
+        }
+        else return color * BackgroundColor(next);
+    }
+    return vec3(0);
+}
+
+
+void main() {
+    Seed(gl_GlobalInvocationID.xy, screenSize, sampleStart);
+
+    if(gl_GlobalInvocationID.x >= screenSize.x
+        || gl_GlobalInvocationID.y >= screenSize.y
+    ) { return; }
+
+    int i = int(gl_GlobalInvocationID.x);
+    int j = int(gl_GlobalInvocationID.y);
+
+    vec3 color = vec3(0.0, 0.0, 0.0);
+
+    for(int sam = 0; sam < samples; ++sam) {
+        float s = (float(i) + Rand()) / screenSize.x;
+        float t = (float(screenSize.y - j) + Rand()) / screenSize.y;
+        Ray ray = generateRay(camera, s, t);
+        // Ray ray =
+        //     generateRay(
+        //         camera,
+        //         float(i) / float(screenSize.x),
+        //         float(screenSize.y- j) / float(screenSize.y)
+        //     );
+        color += RayColor(ray);
+    }
+
+    color /= totalSamples;
+    if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0) {
+        debugPrintfEXT("color=(%f,%f,%f), samples = %d", color, samples);
+    }
+    WriteColor(i, j, color);
+}
+
+vec3 BackgroundColor(Ray r) {
+    vec3 dir = r.direction;
+    float t = 0.5*(dir.y + 1.0);
+    return mix(vec3(1.0,1.0,1.0),vec3(209.0/255.0,227.0/255.0,254.0/255.0), t);
+}
+
+void WriteColor(int x, int y, vec3 color) {
+    target.pixels[y * screenSize.x + x] += vec4(color, 1.0);
+}

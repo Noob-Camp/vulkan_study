@@ -1,6 +1,6 @@
-# Hello Window
+# Hello GLFW Window
 
 Detect environments related to Vulkan
-+ Vulkan API
-+ GLFW
 + GLM
++ GLFW
++ Vulkan API

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON) 
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
@@ -9,23 +9,18 @@ if (NOT CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
 
-project(HelloVulkan
+project(
+    HelloVulkan
     LANGUAGES C CXX
-    DESCRIPTION "Learn Vulkan."
+    DESCRIPTION "Learn Vulkan step by step."
 )
 
 
 # GLFW
-set(GLFW_DIR ${CMAKE_SOURCE_DIR}/external/glfw) # set this to point to an up-to-date GLFW repo
-option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
-option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
-option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
-option(GLFW_INSTALL "Generate installation target" OFF)
-option(GLFW_DOCUMENT_INTERNALS "Include internals in documentation" OFF)
-add_subdirectory(${GLFW_DIR} glfw_binary EXCLUDE_FROM_ALL)
+find_package(glfw3 3.3 REQUIRED)
 
 # glm
-set(GLM_DIR ${CMAKE_SOURCE_DIR}/external/glm)
+find_package(glm REQUIRED)
 
 # Vulkan
 find_package(Vulkan REQUIRED)
@@ -36,10 +31,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 
-# add_subdirectory(src/HelloWindow)
-# add_subdirectory(src/Triangle)
+add_subdirectory(src/1_glfw)
+add_subdirectory(src/2_triangle)
 # add_subdirectory(src/recreateSwapChain)
-add_subdirectory(src/view3DObject)
+#add_subdirectory(src/helloComputeShader)
+#add_subdirectory(src/view3DObject)
+#add_subdirectory(src/rayTracingWithComputeShader)
 
 
 

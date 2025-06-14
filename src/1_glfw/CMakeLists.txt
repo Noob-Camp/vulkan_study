@@ -1,15 +1,16 @@
-add_executable(test_glfw test_glfw.cpp)
+add_executable(1_glfw 1_glfw.cpp)
 
 target_include_directories(
-    test_glfw
+    1_glfw
     PUBLIC
+    ${GLFW_INCLUDE_DIRS}
     ${Vulkan_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/include
 )
 
 target_link_libraries(
-    test_glfw
+    1_glfw
     PUBLIC
-    ${Vulkan_LIBRARIES}
     glfw
+    ${Vulkan_LIBRARIES}
 )
