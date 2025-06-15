@@ -55,7 +55,7 @@ int main() {
               << v.w << ")"
               << std::endl;
 
-    // test Vulkan API
+    // Test Vulkan API
     create_instance();
 
     while (!glfwWindowShouldClose(window)) {
@@ -63,7 +63,7 @@ int main() {
         glfwPollEvents();
     }
 
-    // destruction of resources
+    // Destruction of resources
     vkDestroyInstance(instance, nullptr);
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -81,34 +81,38 @@ void handle_input(GLFWwindow* window) {
 }
 
 void create_instance() {
-    VkApplicationInfo appInfo {
+    VkApplicationInfo application_info {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext = nullptr,
         .pApplicationName = "Hello Vulkan",
-        .applicationVersion = VK_MAKE_VERSION(1, 3, 0),
+        .applicationVersion = VK_API_VERSION_1_4,
         .pEngineName = "No Engine",
-        .engineVersion = VK_MAKE_VERSION(1, 3, 0),
-        .apiVersion = VK_API_VERSION_1_3
+        .engineVersion = VK_API_VERSION_1_4,
+        .apiVersion = VK_API_VERSION_1_4
     };
 
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    std::uint32_t glfw_extension_count = 0;
+    const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
-    VkInstanceCreateInfo createInfo {
+    VkInstanceCreateInfo instance_ci {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = nullptr,
-        .flags = 0,
-        .pApplicationInfo = &appInfo,
-        .enabledLayerCount = 0,
+        .flags = 0u,
+        .pApplicationInfo = &application_info,
+        .enabledLayerCount = 0u,
         .ppEnabledLayerNames = nullptr,
-        .enabledExtensionCount = glfwExtensionCount,
-        .ppEnabledExtensionNames = glfwExtensions
+        .enabledExtensionCount = glfw_extension_count,
+        .ppEnabledExtensionNames = glfw_extensions
     };
 
-    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    if (
+        VkResult result = vkCreateInstance(&instance_ci, nullptr, &instance);
+        result != VK_SUCCESS
+    ) {
         minilog::log_fatal("failed to create VkInstance!");
+    } else {
+        minilog::log_info("create Vulkan instance successfully!");
     }
-    minilog::log_info("create Vulkan instance successfully ");
 }
 
 } // namesapce anonymous end
