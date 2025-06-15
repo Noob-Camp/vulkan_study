@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 4.0.3)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,10 +33,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 add_subdirectory(src/1_glfw)
 add_subdirectory(src/2_triangle)
-# add_subdirectory(src/recreateSwapChain)
-#add_subdirectory(src/helloComputeShader)
-#add_subdirectory(src/view3DObject)
-#add_subdirectory(src/rayTracingWithComputeShader)
+add_subdirectory(src/recreateSwapChain)
+add_subdirectory(src/hello_compute_shader)
+# add_subdirectory(src/view3DObject)
+# add_subdirectory(src/rayTracingWithComputeShader)
 
 
 
