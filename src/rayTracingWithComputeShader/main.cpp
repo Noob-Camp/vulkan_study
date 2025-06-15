@@ -126,7 +126,7 @@ struct RayTracingWithComputeShader {
             logicalDevice.freeMemory(bufferMemory);
         }
         logicalDevice.freeMemory(uniformBufferMemory);
-        
+
         logicalDevice.waitIdle();
         logicalDevice.destroy();
 
@@ -137,7 +137,7 @@ struct RayTracingWithComputeShader {
         instance.destroyDebugUtilsMessengerEXT(debugMessenger, nullptr, dispatch);
 
         instance.destroy();
-        
+
         minilog::log_info("the compute shader programme is destruction.");
     }
 
@@ -191,7 +191,7 @@ struct RayTracingWithComputeShader {
         debugCreateInfo.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
-        debugCreateInfo.pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(debugCallback);
+        debugCreateInfo.pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debugCallback);
         debugCreateInfo.pUserData = nullptr;// optional
     }
 
@@ -440,7 +440,7 @@ struct RayTracingWithComputeShader {
 
         auto material3 = materials.Allocate<Metal>(color(253.0 / 255.0, 236.0 / 255.0, 223.0 / 255.0), 0.0);
         hittables.Allocate<Sphere>(point3(4, 1, 0), 1.0)->mat = material3;
-        
+
         // Camera
         point3 lookfrom(13, 2, 3);
         point3 lookat(0, 0, 0);
@@ -472,7 +472,7 @@ struct RayTracingWithComputeShader {
             .memoryTypeIndex = findMemoryType(requirements,
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)
         };
-        
+
         if (logicalDevice.allocateMemory(&allocInfo, nullptr, &memory) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to allocate buffer memory!");
         }
@@ -690,7 +690,7 @@ struct RayTracingWithComputeShader {
         writes[5].dstBinding = 0;
         writes[5].descriptorType = vk::DescriptorType::eUniformBuffer;
         writes[5].pBufferInfo = &uniformBufferInfo;
-        
+
         logicalDevice.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
@@ -699,7 +699,7 @@ struct RayTracingWithComputeShader {
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
             .queueFamilyIndex = computeQueueFamilyIndex.value()
         };
-        
+
         if (logicalDevice.createCommandPool(&createInfo, nullptr, &commandPool)
             != vk::Result::eSuccess
         ) {
@@ -768,7 +768,7 @@ struct RayTracingWithComputeShader {
             "[{0}/{1}] GPU Process Time: {2}s",
             sampleStart + samples,
             pushConstantData.totalSamples,
-            delta.count() 
+            delta.count()
         );
     }
 

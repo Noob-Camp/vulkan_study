@@ -398,7 +398,7 @@ struct Application {
         debugCreateInfo.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
-        debugCreateInfo.pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(debugCallback);
+        debugCreateInfo.pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debugCallback);
         debugCreateInfo.pUserData = nullptr;// optional
     }
 
