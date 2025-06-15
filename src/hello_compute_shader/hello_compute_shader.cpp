@@ -51,6 +51,19 @@ debug_callback(
     return vk::False;
 }
 
+std::vector<char> read_shader_file(const std::string& fileName) {
+    std::ifstream file(fileName, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) { minilog::log_fatal("failed to open file: {}", fileName); }
+
+    std::size_t file_size = static_cast<std::size_t>(file.tellg());
+    std::vector<char> buffer(file_size);
+    file.seekg(0);
+    file.read(buffer.data(), file_size);
+    file.close();
+
+    return buffer;
+}
+
 
 struct HelloComputeShader {
     vk::Instance instance { nullptr };
@@ -67,7 +80,7 @@ struct HelloComputeShader {
 
     vk::DescriptorPool descriptor_pool;
     vk::DescriptorSetLayout descriptor_set_layout;
-    std::vector<vk::DescriptorSet> descriptor_sets;
+    std::array<vk::DescriptorSet, 1uz> descriptor_sets;
 
     vk::PipelineLayout pipeline_layout;
     vk::Pipeline compute_pipeline;
@@ -144,7 +157,6 @@ struct HelloComputeShader {
             minilog::log_fatal("validation layers requested, but not available!");
         }
     }
-
 
     void create_instance() {
         std::uint32_t support_vulkan_version = vk::enumerateInstanceVersion();
@@ -260,6 +272,7 @@ struct HelloComputeShader {
 
     void create_storage_buffer() {
         vk::BufferCreateInfo buffer_ci {
+            .flags = vk::BufferCreateFlags{},
             .size = sizeof(input_data),
             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
             .sharingMode = vk::SharingMode::eExclusive,
@@ -313,7 +326,7 @@ struct HelloComputeShader {
         };
 
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
-            .flags = 0u,
+            .flags = vk::DescriptorPoolCreateFlags{},
             .maxSets = 1u,
             .poolSizeCount = 1u,
             .pPoolSizes = &descriptor_pool_size
@@ -337,6 +350,7 @@ struct HelloComputeShader {
         };
 
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .flags = vk::DescriptorSetLayoutCreateFlags{},
             .bindingCount = 1u,
             .pBindings = &descriptor_set_layout_binding
         };
@@ -357,7 +371,12 @@ struct HelloComputeShader {
             .descriptorSetCount = 1u,
             .pSetLayouts = &descriptor_set_layout
         };
-        descriptor_sets = logical_device.allocateDescriptorSets(descriptor_set_ai);
+        if (
+            vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, descriptor_sets.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::DescriptorSet");
+        }
 
         vk::DescriptorBufferInfo descriptor_buffer_info {
             .buffer = storage_buffer,
@@ -381,7 +400,7 @@ struct HelloComputeShader {
 
     vk::ShaderModule create_shader_module(const std::vector<char>& code) {
         vk::ShaderModuleCreateInfo shader_module_ci {
-            .flags = 0u,
+            .flags = vk::ShaderModuleCreateFlags{},
             .codeSize = code.size(),
             .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
         };
@@ -397,25 +416,12 @@ struct HelloComputeShader {
         return shader_module;
     }
 
-    static std::vector<char> read_shader_file(const std::string& fileName) {
-        std::ifstream file(fileName, std::ios::ate | std::ios::binary);
-        if (!file.is_open()) { minilog::log_fatal("failed to open file: {}", fileName); }
-
-        std::size_t file_size = static_cast<std::size_t>(file.tellg());
-        std::vector<char> buffer(file_size);
-        file.seekg(0);
-        file.read(buffer.data(), file_size);
-        file.close();
-
-        return buffer;
-    }
-
     void create_compute_pipeline() {
         std::vector<char> compute_shader_code = read_shader_file("./src/hello_compute_shader/compute_shader.spv");
         vk::ShaderModule compute_shader_module = create_shader_module(compute_shader_code);
 
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
-            .flags = 0u,
+            .flags = vk::PipelineShaderStageCreateFlags{},
             .stage = vk::ShaderStageFlagBits::eCompute,
             .module = compute_shader_module,
             .pName = "main",
@@ -423,7 +429,7 @@ struct HelloComputeShader {
         };
 
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
-            .flags = 0u,
+            .flags = vk::PipelineLayoutCreateFlags{},
             .setLayoutCount = 1u,
             .pSetLayouts = &descriptor_set_layout,
             .pushConstantRangeCount = 0u,
@@ -432,7 +438,7 @@ struct HelloComputeShader {
         pipeline_layout = logical_device.createPipelineLayout(pipeline_layout_ci);
 
         vk::ComputePipelineCreateInfo compute_pipeline_ci {
-            .flags = 0u,
+            .flags = vk::PipelineCreateFlags{},
             .stage = pipeline_shader_stage_ci,
             .layout = pipeline_layout,
             .basePipelineHandle = VK_NULL_HANDLE,
