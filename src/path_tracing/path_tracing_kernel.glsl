@@ -89,32 +89,44 @@ float balanced_heuristic(float pdf_a, float pdf_b) {
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-layout(set = 0, binding = 0, rgba32f, std430) uniform image2D output_image;
-layout(set = 0, binding = 1, r32ui, std430) uniform image2D seed_image;
+layout(push_constant) uniform PushConstants {
+    uvec2 screen_size;
+    uint hittableCount;
+    uint sample_start;
+    uint samples;
+    uint total_samples;
+    uint max_depth;
+
+} push_constants;
+
+layout(set = 0, binding = 0) uniform dispatch_data {
+    uint spp_per_dispatch;
+    uint depth_per_tracing;
+};
+layout(set = 0, binding = 1, rgba32f, std140) uniform image2D output_image;
+layout(set = 0, binding = 2, r32ui, std140) uniform image2D seed_image;
 
 layout(set = 1, binding = 0, std430) buffer vertices { vec3 vertices[]; }
 layout(set = 1, binding = 1, std430) buffer Triangles { vec3 triangles[]; }
 
-uint spp_per_dispatch = 1;
-uint depth_per_tracing = 5;
-
 
 void main() {
+    vec3 light_emission(17.0f, 12.0f, 4.0f);
+    vec3 light_position(-0.24f, 1.98f, 0.16f);
+    vec3 light_u = vec3(-0.24f, 1.98f, -0.22f) - light_position;
+    vec3 light_v = vec3(0.23f, 1.98f, 0.16f) - light_position;
+
     uvec2 coord = gl_GlobalInvocationID.xy;
-    uint state = seed_image.read(coord).x;
+    uint state = imageLoad(seed_image, coord).x;
 
     float rx = lcg(state);
     float ry = lcg(state);
     vec2 pixel(
-        (float(coord.x) + rx) / float(resolution.x) * 2.0f - 1.0f,
-        (float(coord.y) + ry) / float(resolution.y) * 2.0f - 1.0f
+        (float(coord.x) + rx) / float(push_constants.screen_size.x) * 2.0f - 1.0f,
+        (float(coord.y) + ry) / float(push_constants.screen_size.y) * 2.0f - 1.0f
     );
 
     vec3 radiance(0.0f, 0.0f, 0.0f);
-    vec3 light_position(-0.24f, 1.98f, 0.16f);
-    vec3 light_u = vec3(-0.24f, 1.98f, -0.22f) - light_position;
-    vec3 light_v = vec3(0.23f, 1.98f, 0.16f) - light_position;
-    vec3 light_emission(17.0f, 12.0f, 4.0f);
     for (uint i = 0; i < spp_per_dispatch; ++i) {
         Ray ray = camera.generate_ray(pixel * vec2(1.0f, -1.0f));
         vec3 beta(1.0f, 1.0f, 1.0f);

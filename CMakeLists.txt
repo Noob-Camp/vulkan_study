@@ -35,6 +35,7 @@ add_subdirectory(src/1_glfw)
 add_subdirectory(src/2_triangle)
 add_subdirectory(src/recreateSwapChain)
 add_subdirectory(src/hello_compute_shader)
+add_subdirectory(src/path_tracing)
 # add_subdirectory(src/view3DObject)
 # add_subdirectory(src/rayTracingWithComputeShader)
 
