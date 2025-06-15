@@ -97,11 +97,15 @@ inline std::ofstream g_log_file = [] () -> std::ofstream {
 } ();
 
 inline void output_log(log_level lev, std::string msg, std::source_location const &loc) {
-    std::chrono::zoned_time now{std::chrono::current_zone(), std::chrono::high_resolution_clock::now()};
-    msg = std::format("{} {}:{} [{}] {}", now, loc.file_name(), loc.line(), details::log_level_name(lev), msg);
-    if (g_log_file) {
-        g_log_file << msg + '\n';
-    }
+    std::chrono::zoned_time now {
+        std::chrono::current_zone(),
+        std::chrono::high_resolution_clock::now()
+    };
+    msg = std::format("[{}] [{}] {}", now, details::log_level_name(lev), msg);
+    // if (g_log_file) {
+    //     msg = std::format("[{}] [{}:{}] [{}] {}", now, loc.file_name(), loc.line(), details::log_level_name(lev), msg);
+    //     g_log_file << msg + '\n';
+    // }
     if (lev >= g_max_level) {
         std::cout << _MINILOG_IF_HAS_ANSI_COLORS(k_level_ansi_colors[(std::uint8_t)lev] +)
                     msg _MINILOG_IF_HAS_ANSI_COLORS(+ k_reset_ansi_color) + '\n';
