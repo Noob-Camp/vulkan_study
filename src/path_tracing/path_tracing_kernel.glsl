@@ -57,12 +57,55 @@ Ray generate_ray(Camera camera, vec2 p) const noexcept {
 }
 
 
+struct SurfaceHitRecord {
+    uint hit;
+    float time;
+};
+
+
 struct Triangle {
     uint index0;
     uint index1;
     uint index2;
 };
 
+SurfaceHitRecord hit_triangle(
+    Ray ray,
+    vec3 p0, vec3 p1, vec3 p2,
+    float t_min,
+    float t_max
+) {
+    SurfaceHitRecord surface_hit_record;
+    vec3 E1 = p1 - p0;
+    vec3 E2 = p2 - p0;
+    vec3 P = cross(ray.direction, E2);
+    vec3 inv_det = 1.0f / dot(E1, P);
+
+    vec3 T = ray.origin - p0;
+    vec3 u = dot(T, P) * inv_det;
+    if (u < 0.0f || u > 1.0f) {
+        surface_hit_record.hit = false;
+        return surface_hit_record
+    }
+
+    vec3 Q = cross(T, E1);
+    vec3 v = dot(ray.direction, Q) * inv_det;
+    if (v < 0.0f || u + v > 1.0f) {
+        surface_hit_record.hit = false;
+        return surface_hit_record
+    }
+
+    vec3 t = dot(E2, Q) * inv_det;
+    if (t <= t_min || t >= t_max) {
+        surface_hit_record.hit = false;
+        return surface_hit_record
+    }
+
+    surface_hit_record.hit = true;
+    surface_hit_record.time = t;
+
+    return surface_hit_record
+}
 
 uint tea(uint v0, uint v1) {
     uint s0 = 0u;

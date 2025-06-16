@@ -86,9 +86,9 @@ struct Camera {
 
 
 struct Triangle {
-    std::uint32_t index0;
-    std::uint32_t index1;
-    std::uint32_t index2;
+    glm::vec3 p0;
+    glm::vec3 p1;
+    glm::vec3 p2;
 };
 
 
@@ -97,6 +97,7 @@ struct CornellBoxSceneData {
     std::vector<glm::vec4> output_image;
     std::vector<glm::vec4> seed_image;
     std::vector<glm::vec3> vertices;
+    std::vector<Triangle> triangles;
 };
 
 
@@ -135,8 +136,6 @@ public:
     }
 
     ~PathTracing() {
-        logical_device.destroyCommandPool(command_pool);
-
         logical_device.destroyPipeline(compute_pipeline);
         logical_device.destroyPipelineLayout(pipeline_layout);
 
@@ -157,6 +156,13 @@ public:
         for (vk::Buffer& storage_buffer : storage_buffers) {
             logical_device.destroyBuffer(storage_buffer);
         }
+
+        logical_device.freeCommandBuffers(
+            command_pool,
+            static_cast<std::uint32_t>(command_buffers.size()),
+            command_buffers.data()
+        );
+        logical_device.destroyCommandPool(command_pool);
 
         logical_device.waitIdle();
         logical_device.destroy();
