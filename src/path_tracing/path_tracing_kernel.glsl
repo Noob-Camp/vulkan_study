@@ -111,7 +111,25 @@ SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
     SurfaceHitRecord surface_hit_record;
     surface_hit_record.hit = false;
     float t_closest = t_max;
+
+    for (uint i = 0u; i < vertices.length(); i += 3u) {
+        SurfaceHitRecord temp_record = hit_triangle(
+            ray,
+            vertices[i + 0u],
+            vertices[i + 1u],
+            vertices[i + 2u],
+            t_min,
+            t_max
+        );
+        if (temp_record.hit) {
+            t_closest = temp_record.time;
+            surface_hit_record = temp_record;
+        }
+    }
+
+    return surface_hit_record;
 }
+
 
 uint tea(uint v0, uint v1) {
     uint s0 = 0u;
