@@ -3,11 +3,15 @@
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
+
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
 #include <stb/stb_image_write.h>
-#include <cornell_box.hpp>
 
 #include <minilog.hpp>
+#include <cornell_box.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -61,7 +65,6 @@ debug_callback(
 }
 
 
-
 struct PushConstantData {
     glm::uvec2 screen_size { 0u, 0u };
     std::uint32_t hittableCount { 0u };
@@ -72,10 +75,28 @@ struct PushConstantData {
 };
 
 
+struct Camera {
+    float fov;
+    glm::uvec2 resolution;
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+    glm::vec3 right;
+};
+
+
+struct Triangle {
+    std::uint32_t index0;
+    std::uint32_t index1;
+    std::uint32_t index2;
+};
+
+
 struct CornellBoxSceneData {
-    std::vector<float> output_image;
-    std::vector<float> seed_image;
-    std::vector<float> vertices;
+    Camera camera;
+    std::vector<glm::vec4> output_image;
+    std::vector<glm::vec4> seed_image;
+    std::vector<glm::vec3> vertices;
 };
 
 
@@ -94,9 +115,9 @@ class PathTracing {
     vk::Device logical_device { nullptr };
 
     std::array<vk::Buffer, 2uz> uniform_buffers;
-    std::array<vk::DeviceMemory, 2uz> uniform_buffer_memorys;
+    std::array<vk::DeviceMemory, 2uz> uniform_device_memorys;
     std::array<vk::Buffer, 5uz> storage_buffers;
-    std::array <vk::DeviceMemory, 5uz> storage_buffer_memorys;
+    std::array <vk::DeviceMemory, 5uz> storage_device_memorys;
 
     vk::DescriptorPool descriptor_pool;
     std::array<vk::DescriptorSetLayout, 2uz> descriptor_set_layouts;
@@ -113,27 +134,42 @@ public:
         prepare_scene_data();
     }
 
-
     ~PathTracing() {
-        // vkDestroyCommandPool(logical_device, command_pool, nullptr);
-        // vkDestroyDescriptorPool(logical_device, descriptor_pool, nullptr);
-        // vkDestroyPipeline(logical_device, compute_pipeline, nullptr);
-        // vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
-        // for (std::size_t i = 0uz; i < descriptor_set_layouts.size(); ++i) {
-        //     vkDestroyDescriptorSetLayout(logical_device, descriptor_set_layouts[i], nullptr);
-        // }
+        logical_device.destroyCommandPool(command_pool);
 
-        // for (std::size_t i = 0uz; i < storageBuffers.size(); ++i) {
-        //     vkDestroyBuffer(logical_device, storage_buffers[i], nullptr);
-        //     vkFreeMemory(logical_device, storage_buffer_memorys[i], nullptr);
-        // }
+        logical_device.destroyPipeline(compute_pipeline);
+        logical_device.destroyPipelineLayout(pipeline_layout);
 
-        // vkDestroyBuffer(logical_device, uniform_buffer, nullptr);
-        // vkFreeMemory(logical_device, uniform_buffer_memory, nullptr);
+        for (vk::DescriptorSetLayout& descriptor_set_layout : descriptor_set_layouts) {
+            logical_device.destroyDescriptorSetLayout(descriptor_set_layouts);
+        }
+        logical_device.destroyDescriptorPool(descriptor_pool, nullptr);
 
-        // MuVk::Proxy::destoryDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        // vkDestroyDevice(logical_device, nullptr);
-        // vkDestroyInstance(instance, nullptr);
+        for (vk::DeviceMemory& uniform_device_memory : uniform_device_memorys) {
+            logical_device.freeMemory(uniform_device_memory);
+        }
+        for (vk::DeviceMemory& storage_device_memory : storage_device_memorys) {
+            logical_device.freeMemory(storage_device_memory);
+        }
+        for (vk::Buffer& uniform_buffer : uniform_buffers) {
+            logical_device.destroyBuffer(uniform_buffer);
+        }
+        for (vk::Buffer& storage_buffer : storage_buffers) {
+            logical_device.destroyBuffer(storage_buffer);
+        }
+
+        logical_device.waitIdle();
+        logical_device.destroy();
+
+        vk::detail::DynamicLoader dynamic_loader;
+        PFN_vkGetInstanceProcAddr
+        getInstanceProcAddr = dynamic_loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        vk::detail::DispatchLoaderDynamic dispatch_loader_dynamic(instance, getInstanceProcAddr);
+        instance.destroyDebugUtilsMessengerEXT(debug_utils_messenger, nullptr, dispatch_loader_dynamic);
+
+        instance.destroy();
+
+        minilog::log_debug("the compute shader programme is destruction.");
     }
 
     void prepare_scene_data() {
@@ -146,21 +182,41 @@ public:
         if (!obj_reader.ParseFromString(cornell_box_string, "", obj_reader_config)) {
             std::string_view error_message = "unknown error.";
             if (auto &&e = obj_reader.Error(); !e.empty()) { error_message = e; }
-            std::cout << "Failed to load OBJ file: " << error_message << std::endl;
+            minilog::log_fatal("Failed to load OBJ file: {}", error_message);
         }
-        if (auto &&e = obj_reader.Warning(); !e.empty()) { std::cout << e << std::endl; }
+        if (auto &&e = obj_reader.Warning(); !e.empty()) { minilog::log_fatal("{}", e); }
 
+        // vertices
         auto &&p = obj_reader.GetAttrib().vertices;
-        scene_data.vertices.reserve(p.size());
-        for (std::uint32_t i = 0u; i < p.size(); ++i) { scene_data.vertices.emplace_back(p[i]); }
-        std::cout << "Loaded mesh with " << obj_reader.GetShapes().size() << " shapes"
-                << " and " << scene_data.vertices.size() << " vertices."
-                << std::endl;
+        scene_data.vertices.reserve(p.size() / 3uz);
+        for (std::size_t i { 0uz }; i < p.size(); ++i) {
+            scene_data.vertices.emplace_back({ p[i], p[i + 1uz], p[i + 2uz] });
+        }
+        minilog::log_debug(
+            "Loaded mesh with {} shape(s) and {} vertices.",
+            obj_reader.GetShapes().size(), scene_data.vertices.size()
+        );
+
+        // mesh
+        // for (auto &&shape : obj_reader.GetShapes()) {
+        //     std::uint32_t index = static_cast<std::uint32_t>(meshes.size());
+        //     std::vector<tinyobj::index_t> const &t = shape.mesh.indices;
+        //     std::uint32_t triangle_count = t.size() / 3uz;
+        //     minilog::log_debug(
+        //         "Processing shape '{}' at index {} with {} triangle(s).",
+        //         shape.name, index, triangle_count
+        //     );
+
+        //     std::vector<std::uint32_t> indices;
+        //     indices.reserve(t.size());
+        //     for (tinyobj::index_t i : t) { indices.emplace_back(i.vertex_index); }
+        // }
     }
 
     void run() {
         check_validation_layer_support();
         create_instance();
+        setup_debug_messenger();
 
         pick_physical_device();
         create_logical_device();
@@ -169,19 +225,12 @@ public:
         create_descriptor_pool();
         create_descriptor_set_layout();
         create_descriptor_set();
-        // create_compute_pipeline();
-
-
-
+        create_compute_pipeline();
 
         create_command_pool();
         create_command_buffer();
 
-
-        // write_memory(uniform_buffer_memorys[0], output_image.data(), output_image.size());
-        // write_memory(uniform_buffer_memorys[1], seed_image.data(), seed_image.size());
-
-
+        execute();
     }
 
     void check_validation_layer_support() {
@@ -207,7 +256,10 @@ public:
         auto version_major = vk::apiVersionMajor(support_vulkan_version);
         auto version_minor = vk::apiVersionMinor(support_vulkan_version);
         auto version_patch = vk::apiVersionPatch(support_vulkan_version);
-        minilog::log_debug("vulkan version(vk::enumerateInstanceVersion): {}.{}.{}", version_major, version_minor, version_patch);
+        minilog::log_debug(
+            "vulkan version(vk::enumerateInstanceVersion): {}.{}.{}",
+            version_major, version_minor, version_patch
+        );
 
         vk::ApplicationInfo application_info {
             .pApplicationName = "hello compute shader",
@@ -230,6 +282,37 @@ public:
 
         if (vk::createInstance(&instance_ci, nullptr, &instance) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::Instance!");
+        }
+    }
+
+    void setup_debug_messenger() {
+        if (!ENABLE_VALIDATION_LAYER) { return ; }
+
+        vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
+            .flags = vk::DebugUtilsMessengerCreateFlagsEXT{},
+            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
+                | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+                | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+            .pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debug_callback),
+            .pUserData = nullptr
+        };
+
+        vk::detail::DynamicLoader dynamic_loader;
+        PFN_vkGetInstanceProcAddr getInstanceProcAddr =
+            dynamic_loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        vk::detail::DispatchLoaderDynamic dispatch_loader_dynamic(instance, getInstanceProcAddr);
+
+        if (
+            vk::Result result = instance.createDebugUtilsMessengerEXT(
+                &debug_utils_messenger_ci, nullptr, &debug_utils_messenger, dispatch_loader_dynamic
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to set up debug messenger!");
         }
     }
 
@@ -297,7 +380,7 @@ public:
                 1920u * 1080u * 4u,
                 vk::BufferUsageFlagBits::eUniformBuffer,
                 uniform_buffers[i],
-                uniform_buffer_memorys[i]
+                uniform_device_memorys[i]
             );
         }
         for (std::size_t i = 0uz; i < storage_buffers.size(); ++i) {
@@ -305,7 +388,7 @@ public:
                 1920u * 1080u * 4u,
                 vk::BufferUsageFlagBits::eStorageBuffer,
                 storage_buffers[i],
-                storage_buffer_memorys[i]
+                storage_device_memorys[i]
             );
         }
     }
@@ -417,7 +500,147 @@ public:
         // TODO
     }
 
+    void create_compute_pipeline() {
+        std::vector<char> compute_shader_code = read_shader_file("./src/path_tracing/path_tracing_kernel.spv");
+        vk::ShaderModule compute_shader_module = _create_shader_module(compute_shader_code);
 
+        vk::SpecializationMapEntry specialization_map_entry {
+            .constantID = 0u,
+            .offset = 0u,
+            .size = sizeof(uint32_t)
+        };
+
+        vk::SpecializationInfo specialization_info {
+            .mapEntryCount = 1u,
+            .pMapEntries = &specialization_map_entry,
+            .dataSize = sizeof(compute_shader_process_unit),
+            .pData = &compute_shader_process_unit
+        };
+
+        vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
+            .flags = {},
+            .stage = vk::ShaderStageFlagBits::eCompute,
+            .module = compute_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = &specialization_info
+        };
+
+        vk::PushConstantRange push_constant_range {
+            .stageFlags = vk::ShaderStageFlagBits::eCompute,
+            .offset = 0u,
+            .size = sizeof(PushConstantData)
+        };
+
+        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .flags = {},
+            .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data(),
+            .pushConstantRangeCount = 1u;
+            .pPushConstantRanges = &push_constant_range;
+        };
+        if (
+            vk::Result result = logical_device.createPipelineLayout(&pipeline_layout_ci, nullptr, &pipeline_layout);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("failed to create pipeline layout!");
+        }
+
+        vk::ComputePipelineCreateInfo compute_pipeline_ci {
+            .flags = {},
+            .stage = pipeline_shader_stage_ci,
+            .layout = pipeline_layout,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = -1
+        };
+
+        if (
+            vk::Result result = logical_device.createComputePipelines(
+                nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline
+            );
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("failed to create compute pipeline");
+        }
+
+        logical_device.destroyShaderModule(compute_shader_module, nullptr);
+    }
+
+    void create_command_pool() {
+        vk::CommandPoolCreateInfo command_pool_ci {
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = compute_queue_family_index.value()
+        };
+
+        if (
+            vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create command pool!");
+        }
+    }
+
+    void create_command_buffer() {
+        vk::CommandBufferAllocateInfo command_buffer_ai {
+            .commandPool = command_pool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1u
+        };
+        if (
+            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, command_buffers.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create command buffer!");
+        }
+    }
+
+    void execute() {
+        vk::CommandBufferBeginInfo command_buffer_begin_info {
+            .flags = {},
+            .pInheritanceInfo = nullptr
+        };
+        if (
+            vk::Result result = command_buffers[0].begin(&command_buffer_begin_info);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("command buffer failed to begin!");
+        }
+
+        command_buffers[0].bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
+        command_buffers[0].bindDescriptorSets(
+            vk::PipelineBindPoint::eCompute,
+            pipeline_layout,
+            0u,
+            1u,
+            descriptor_sets.data(),
+            0u,
+            nullptr
+        );
+        command_buffers[0].dispatch(16u, 16u, 1u);
+        command_buffers[0].end();
+
+        vk::SubmitInfo submit_info {
+            .waitSemaphoreCount = 0u,
+            .commandBufferCount = 1u,
+            .pCommandBuffers = &command_buffers[0uz],
+            .signalSemaphoreCount = 0u
+        };
+
+        if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
+            minilog::log_fatal("failed to submit command buffer!");
+        }
+        if (
+            vk::Result result = compute_queue.waitIdle(); // wait the calculation to finish
+            result == vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("compute queue synchronization!");
+        }
+
+        // void* data = logical_device.mapMemory(storage_buffer_memory, 0u, sizeof(input_data), {});
+        // memcpy(output_data.data(), data, sizeof(input_data));
+        // logical_device.unmapMemory(storage_buffer_memory);
+    }
+
+private:
     std::uint32_t _find_memory_type(
         const vk::MemoryRequirements& memory_requirements,
         vk::MemoryPropertyFlags memory_properties
@@ -477,12 +700,27 @@ public:
         logical_device.bindBufferMemory(buffer, memory, 0u);
     }
 
+    vk::ShaderModule _create_shader_module(const std::vector<char>& code) {
+        vk::ShaderModule shader_module;
+        vk::ShaderModuleCreateInfo shader_module_ci {
+            .flags = {},
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
+        };
+        if (
+            vk::Result result = vkCreateShaderModule(logical_device, &shader_module_ci, nullptr, &shader_module);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("fail to create shader module");
+        }
 
+        return shader_module;
+    }
 
-    #if 0
+#if 0
     void read_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
         void* data { nullptr };
-        if (vkMapMemory(logical_device, memory, 0, size, 0, &data) != VK_SUCCESS) {
+        if (vkMapMemory(logical_device, memory, 0, size, 0, &data) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to map memory");
         }
         memcpy(dataBlock, data, size);
@@ -491,188 +729,16 @@ public:
 
     void write_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
         void* data { nullptr };
-        if (vkMapMemory(logical_device, memory, 0u, size, 0u, &data) != VK_SUCCESS) {
+        if (vkMapMemory(logical_device, memory, 0u, size, 0u, &data) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to map memory");
         }
         memcpy(data, dataBlock, size);
         vkUnmapMemory(device, memory);
     }
-
-
-    vk::ShaderModule create_shader_module(const std::vector<char>& code) {
-        vk::ShaderModule shader_module;
-        vk::ShaderModuleCreateInfo shader_module_ci {
-            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0u,
-            .codeSize = code.size(),
-            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
-        };
-        if (
-            vk::Result result = vkCreateShaderModule(logical_device, &shader_module_ci, nullptr, &shader_module);
-            result != VK_SUCCESS
-        ) {
-            throw std::runtime_error("fail to create shader module");
-        }
-
-        return shader_module;
-    }
-
-    void create_compute_pipeline() {
-        auto compute_shader_code = read_shader_file(MU_SHADER_PATH "./src/path_tracing/path_tracing_kernel.spv");
-        auto compute_shader_module = create_shader_module(compute_shader_code);
-
-        vk::SpecializationMapEntry specialization_map_entry {
-            .constantID = 0,
-            .offset = 0,
-            .size = sizeof(uint32_t)
-        };
-
-        vk::SpecializationInfo specialization_ci {
-            .mapEntryCount = 1u,
-            .pMapEntries = &specialization_map_entry,
-            .dataSize = sizeof(compute_shader_process_unit),
-            .pData = &compute_shader_process_unit
-        };
-
-        vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0u,
-            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-            .module = compute_shader_module,
-            .pName = "main",
-            .pSpecializationInfo = &specialization_ci
-        };
-
-        vk::PushConstantRange push_constant_range {
-            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-            .offset = 0u,
-            .size = sizeof(PushConstantData)
-        };
-
-        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0u,
-            .setLayoutCount = descriptor_set_layouts.size(),
-            .pSetLayouts = descriptor_set_layouts.data(),
-            .pushConstantRangeCount = 1u;
-            .pPushConstantRanges = &push_constant_range;
-        };
-        if (
-            vk::Result result = vkCreatePipelineLayout(device, &pipeline_layout_ci, nullptr, &pipeline_layout)
-            result != VK_SUCCESS
-        ) {
-            throw std::runtime_error("failed to create pipeline layout!");
-        }
-
-        vk::ComputePipelineCreateInfo compute_pipeline_ci {
-            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0u,
-            .stage = pipeline_shader_stage_ci,
-            .layout = pipeline_layout,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = -1
-        };
-
-        if (
-            vk::Result result = vkCreateComputePipelines(device, nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline);
-            result != VK_SUCCESS
-        ) {
-            throw std::runtime_error("failed to create compute pipeline");
-        }
-
-        vkDestroyShaderModule(logical_device, computeShaderModule, nullptr);
-    }
-
-
-
 #endif
-
-    void create_command_pool() {
-        vk::CommandPoolCreateInfo command_pool_ci {
-            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = compute_queue_family_index.value()
-        };
-
-        if (
-            vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create command pool!");
-        }
-    }
-
-    void create_command_buffer() {
-        vk::CommandBufferAllocateInfo command_buffer_ai {
-            .commandPool = command_pool,
-            .level = vk::CommandBufferLevel::ePrimary,
-            .commandBufferCount = 1u
-        };
-        if (
-            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, command_buffers.data());
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create command buffer!");
-        }
-    }
 };
 
-
-
-
-
 #if 0
-vk::DebugUtilsMessengerCreateInfoEXT populate_debug_messenger_ci() {
-    vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .pNext = nullptr,
-        .flags = 0u,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = debug_callback,
-        .pUserData = nullptr
-    };
-
-    return debug_utils_messenger_ci;
-}
-
-vk::Result createDebugUtilsMessengerEXT(
-    vk::Instance instance,
-    const vk::DebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-    const vk::AllocationCallbacks* pAllocator,
-    vk::DebugUtilsMessengerEXT* pDebugMessenger
-) {
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT)
-        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-    if (func) {
-        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-    } else {
-        throw std::runtime_error("can't find proc: vkCreateDebugUtilsMessengerEXT");
-    }
-}
-
-void destoryDebugUtilsMessengerEXT(
-    vk::Instance instance,
-    vk::DebugUtilsMessengerEXT messenger,
-    const vk::AllocationCallbacks* pAllocator
-) {
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
-        vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func) {
-        func(instance, messenger, pAllocator);
-    } else {
-        throw std::runtime_error("can't find proc");
-    }
-}
-
 std::vector<vk::ExtensionProperties> query_instance_extension_properties() {
     std::uint32_t extension_count { 0u };
     vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
@@ -708,6 +774,7 @@ vk::PhysicalDeviceMemoryProperties query_physical_device_memory_properties(vk::P
     vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
     return physical_device_memory_properties;
 }
+#endif
 
 std::vector<char> read_shader_file(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -721,7 +788,7 @@ std::vector<char> read_shader_file(const std::string& filename) {
 
     return buffer;
 }
-#endif
+
 
 int main() {
     minilog::set_log_level(minilog::log_level::trace); // default log level is 'info'

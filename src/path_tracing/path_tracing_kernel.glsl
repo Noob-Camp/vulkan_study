@@ -40,23 +40,28 @@ struct Camera {
     vec3 up;
     vec3 right;
     float fov;
-    vec2 resolution;
+    uvec2 resolution;
 };
 
-Ray generate_ray(vec2 p) const noexcept {
-    float fov_radians = radians(fov);
-    float aspect_ratio = resolution.x / resolution.y;
+Ray generate_ray(Camera camera, vec2 p) const noexcept {
+    float fov_radians = radians(camera.fov);
+    float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
     vec3 wi_local(
         p.x * tan(0.5f * fov_radians) * aspect_ratio,
         p.y * tan(0.5f * fov_radians),
         -1.0f
     );
-    vec3 wi_world = normalize(wi_local.x * right + wi_local.y * up - wi_local.z * front);
+    vec3 wi_world = normalize(wi_local.x * camera.right + wi_local.y * camera.up - wi_local.z * camera.front);
 
     return make_ray(position, wi_world, 0.0f, 100000.0f);
 }
 
 
+struct Triangle {
+    uint index0;
+    uint index1;
+    uint index2;
+};
 
 
 uint tea(uint v0, uint v1) {
@@ -86,25 +91,27 @@ float balanced_heuristic(float pdf_a, float pdf_b) {
 
 
 
+struct DispatchData {
+    uint spp;
+    uint depths;
+};
 
-layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-layout(push_constant) uniform PushConstants {
-    uvec2 screen_size;
+struct PushConstant {
     uint hittableCount;
     uint sample_start;
     uint samples;
     uint total_samples;
     uint max_depth;
-
-} push_constants;
-
-layout(set = 0, binding = 0) uniform dispatch_data {
-    uint spp_per_dispatch;
-    uint depth_per_tracing;
 };
-layout(set = 0, binding = 1, rgba32f, std140) uniform image2D output_image;
-layout(set = 0, binding = 2, r32ui, std140) uniform image2D seed_image;
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstant push_constants;
+
+layout(set = 0, binding = 0, std140) uniform DispatchDataBuffer dispatch_data;
+layout(set = 0, binding = 1, std140) uniform Camera camera;
+layout(set = 0, binding = 2, rgba32f, std140) uniform image2D output_image;
+layout(set = 0, binding = 3, r32ui, std140) uniform image2D seed_image;
 
 layout(set = 1, binding = 0, std430) buffer vertices { vec3 vertices[]; }
 layout(set = 1, binding = 1, std430) buffer Triangles { vec3 triangles[]; }
@@ -115,25 +122,26 @@ void main() {
     vec3 light_position(-0.24f, 1.98f, 0.16f);
     vec3 light_u = vec3(-0.24f, 1.98f, -0.22f) - light_position;
     vec3 light_v = vec3(0.23f, 1.98f, 0.16f) - light_position;
+    float light_area = length(cross(light_u, light_v));
+    vec3 light_normal = normalize(cross(light_u, light_v));
 
     uvec2 coord = gl_GlobalInvocationID.xy;
-    uint state = imageLoad(seed_image, coord).x;
+    uint state = imageLoad(seed_image, coord).r;
 
     float rx = lcg(state);
     float ry = lcg(state);
-    vec2 pixel(
-        (float(coord.x) + rx) / float(push_constants.screen_size.x) * 2.0f - 1.0f,
-        (float(coord.y) + ry) / float(push_constants.screen_size.y) * 2.0f - 1.0f
+    vec2 pixel_coord(
+        (float(coord.x) + rx) / float(camera.resolution.x) * 2.0f - 1.0f,
+        // (float(coord.y) + ry) / float(camera.resolution.y) * 2.0f - 1.0f
+        1.0f - (float(coord.y) + ry) / float(camera.resolution.y) * 2.0f
     );
 
     vec3 radiance(0.0f, 0.0f, 0.0f);
-    for (uint i = 0; i < spp_per_dispatch; ++i) {
-        Ray ray = camera.generate_ray(pixel * vec2(1.0f, -1.0f));
+    for (uint i = 0; i < dispatch_data.spp; ++i) {
+        Ray ray = generate_ray(camera, pixel_coord);
         vec3 beta(1.0f, 1.0f, 1.0f);
         float pdf_bsdf = 0.0f;
-        float light_area = length(cross(light_u, light_v));
-        vec3 light_normal = normalize(cross(light_u, light_v));
-        for (uint depth = 0; depth < depth_per_tracing; ++depth) {
+        for (uint depth = 0; depth < dispatch_data.depths; ++depth) {
             Var<SurfaceHit> hit = accel.intersect(ray, {});
             reorder_shader_execution();
             if (hit.miss()) { break; };
@@ -197,8 +205,7 @@ void main() {
     };
 
     radiance /= float(spp_per_dispatch);
-    seed_image.write(coord, make_uint4(state));
     if (isnan(radiance)) { radiance = vec3(0.0f, 0.0f, 0.0f); };
-
-    image.write(coord, vec4(clamp(radiance, 0.0f, 30.0f), 1.0f));
+    imageStore(output_image, coord, vec4(clamp(radiance, 0.0f, 30.0f), 1.0f));
+    imageStore(seed_image, coord, uvec4(state));
 };
