@@ -1,3 +1,5 @@
+#version 450
+
 struct Onb {
     vec3 tangent;
     vec3 binormal;
@@ -16,7 +18,7 @@ struct Ray {
     vec3 direction;
     float t_min;
     float t_max;
-}
+};
 
 Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
     Ray ray;
@@ -27,7 +29,7 @@ Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
     return ray;
 }
 
-vec3 offset_ray_origin(vec3 p, vec3 n) noexcept {
+vec3 offset_ray_origin(vec3 p, vec3 n) {
     ivec3 of_i(256.0f * n, 256.0f * n, 256.0f * n);
     auto p_i = as<float3>(as<int3>(p) + ite(p < 0.0f, -of_i, of_i));
     return ite(abs(p) < 1.0f / 32.0f, p + 1.0f / 65536.0f * n, p_i);
@@ -43,7 +45,7 @@ struct Camera {
     uvec2 resolution;
 };
 
-Ray generate_ray(Camera camera, vec2 p) const noexcept {
+Ray generate_ray(Camera camera, vec2 p) {
     float fov_radians = radians(camera.fov);
     float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
     vec3 wi_local(
@@ -51,7 +53,11 @@ Ray generate_ray(Camera camera, vec2 p) const noexcept {
         p.y * tan(0.5f * fov_radians),
         -1.0f
     );
-    vec3 wi_world = normalize(wi_local.x * camera.right + wi_local.y * camera.up - wi_local.z * camera.front);
+    vec3 wi_world = normalize(
+        wi_local.x * camera.right
+        + wi_local.y * camera.up
+        - wi_local.z * camera.front
+    );
 
     return make_ray(position, wi_world, 0.0f, 100000.0f);
 }
@@ -180,7 +186,9 @@ layout(set = 0, binding = 1, std140) uniform Camera camera;
 layout(set = 0, binding = 2, rgba32f, std140) uniform image2D output_image;
 layout(set = 0, binding = 3, r32ui, std140) uniform image2D seed_image;
 
-layout(set = 1, binding = 0, std430) readonly buffer vertices { vec3 vertices[]; }
+layout(set = 1, binding = 0, std430) readonly buffer VerticesBuffer {
+    vec3 data[];
+} vertices;
 
 
 void main() {

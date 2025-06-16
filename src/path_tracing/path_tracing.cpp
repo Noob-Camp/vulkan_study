@@ -64,6 +64,19 @@ debug_callback(
     return vk::False;
 }
 
+std::vector<char> read_shader_file(const std::string& filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) { throw std::runtime_error("failed to open file!"); }
+
+    std::size_t file_size = static_cast<std::size_t>(file.tellg());
+    std::vector<char> buffer(file_size);
+    file.seekg(0);
+    file.read(buffer.data(), file_size);
+    file.close();
+
+    return buffer;
+}
+
 
 struct PushConstantData {
     glm::uvec2 screen_size { 0u, 0u };
@@ -86,9 +99,9 @@ struct Camera {
 
 
 struct Triangle {
-    glm::vec3 p0;
-    glm::vec3 p1;
-    glm::vec3 p2;
+    std::uint32_t index0;
+    std::uint32_t index1;
+    std::uint32_t index2;
 };
 
 
@@ -131,16 +144,14 @@ class PathTracing {
     vk::Pipeline compute_pipeline;
 
 public:
-    PathTracing() {
-        prepare_scene_data();
-    }
+    PathTracing() = default;
 
     ~PathTracing() {
         logical_device.destroyPipeline(compute_pipeline);
         logical_device.destroyPipelineLayout(pipeline_layout);
 
         for (vk::DescriptorSetLayout& descriptor_set_layout : descriptor_set_layouts) {
-            logical_device.destroyDescriptorSetLayout(descriptor_set_layouts);
+            logical_device.destroyDescriptorSetLayout(descriptor_set_layout);
         }
         logical_device.destroyDescriptorPool(descriptor_pool, nullptr);
 
@@ -195,8 +206,14 @@ public:
         // vertices
         auto &&p = obj_reader.GetAttrib().vertices;
         scene_data.vertices.reserve(p.size() / 3uz);
-        for (std::size_t i { 0uz }; i < p.size(); ++i) {
-            scene_data.vertices.emplace_back({ p[i], p[i + 1uz], p[i + 2uz] });
+        for (std::size_t i { 0uz }; i < p.size(); i += 3uz) {
+            scene_data.vertices.emplace_back(
+                glm::vec3 { p[i], p[i + 1uz], p[i + 2uz] }
+            );
+            minilog::log_debug(
+                "index {}: {}, {}, {}",
+                i, p[i], p[i + 1uz], p[i + 2uz]
+            );
         }
         minilog::log_debug(
             "Loaded mesh with {} shape(s) and {} vertices.",
@@ -208,22 +225,27 @@ public:
             storage_buffers[0uz],
             storage_device_memorys[0uz]
         );
-        _write_memory(storage_device_memorys[0uz], scene_data.vertices.data, scene_data.vertices.size());
+        _write_memory(storage_device_memorys[0uz], scene_data.vertices.data(), scene_data.vertices.size());
 
         // mesh
-        // for (auto &&shape : obj_reader.GetShapes()) {
-        //     std::uint32_t index = static_cast<std::uint32_t>(meshes.size());
-        //     std::vector<tinyobj::index_t> const &t = shape.mesh.indices;
-        //     std::uint32_t triangle_count = t.size() / 3uz;
-        //     minilog::log_debug(
-        //         "Processing shape '{}' at index {} with {} triangle(s).",
-        //         shape.name, index, triangle_count
-        //     );
+        int i = 0;
+        for (auto &&shape : obj_reader.GetShapes()) {
+            // std::uint32_t index = static_cast<std::uint32_t>(meshes.size());
+            std::vector<tinyobj::index_t> const &t = shape.mesh.indices;
+            std::size_t triangle_count = t.size() / 3uz;
+            minilog::log_debug(
+                "Processing shape '{}' at index {} with {} triangle(s).",
+                shape.name, i, triangle_count
+            );
 
-        //     std::vector<std::uint32_t> indices;
-        //     indices.reserve(t.size());
-        //     for (tinyobj::index_t i : t) { indices.emplace_back(i.vertex_index); }
-        // }
+            std::vector<std::uint32_t> indices;
+            indices.reserve(t.size());
+            for (tinyobj::index_t i : t) {
+                indices.emplace_back(i.vertex_index);
+                minilog::log_debug("indices: {}", i.vertex_index);
+            }
+            ++i;
+        }
     }
 
     void run() {
@@ -238,12 +260,14 @@ public:
         create_command_buffer();
 
         create_buffers();
+        prepare_scene_data();
+
         create_descriptor_pool();
         create_descriptor_set_layout();
         create_descriptor_set();
-        create_compute_pipeline();
+        // create_compute_pipeline();
 
-        execute();
+        // execute();
     }
 
     void check_validation_layer_support() {
@@ -424,6 +448,14 @@ public:
                 uniform_device_memorys[i]
             );
         }
+        for (std::size_t i = 0uz; i < storage_buffers.size(); ++i) {
+            _create_buffer(
+                1920u * 1080u * 4u,
+                vk::BufferUsageFlagBits::eStorageBuffer,
+                storage_buffers[i],
+                storage_device_memorys[i]
+            );
+        }
     }
 
     void create_descriptor_pool() {
@@ -568,8 +600,8 @@ public:
             .flags = {},
             .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
             .pSetLayouts = descriptor_set_layouts.data(),
-            .pushConstantRangeCount = 1u;
-            .pPushConstantRanges = &push_constant_range;
+            .pushConstantRangeCount = 1u,
+            .pPushConstantRanges = &push_constant_range
         };
         if (
             vk::Result result = logical_device.createPipelineLayout(&pipeline_layout_ci, nullptr, &pipeline_layout);
@@ -604,14 +636,14 @@ public:
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = command_buffers[0].begin(&command_buffer_begin_info);
+            vk::Result result = command_buffers[0uz].begin(&command_buffer_begin_info);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("command buffer failed to begin!");
         }
 
-        command_buffers[0].bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
-        command_buffers[0].bindDescriptorSets(
+        command_buffers[0uz].bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
+        command_buffers[0uz].bindDescriptorSets(
             vk::PipelineBindPoint::eCompute,
             pipeline_layout,
             0u,
@@ -620,12 +652,12 @@ public:
             0u,
             nullptr
         );
-        command_buffers[0].dispatch(16u, 16u, 1u);
-        command_buffers[0].end();
+        command_buffers[0uz].dispatch(16u, 16u, 1u);
+        command_buffers[0uz].end();
 
         vk::SubmitInfo submit_info {
             .waitSemaphoreCount = 0u,
-            .pWaitSemphores = nullptr,
+            .pWaitSemaphores = nullptr,
             .pWaitDstStageMask = {},
             .commandBufferCount = 1u,
             .pCommandBuffers = &command_buffers[0uz],
@@ -636,12 +668,7 @@ public:
         if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to submit command buffer!");
         }
-        if (
-            vk::Result result = compute_queue.waitIdle(); // wait the calculation to finish
-            result == vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("compute queue synchronization!");
-        }
+        compute_queue.waitIdle(); // wait the calculation to finish
 
         // void* data = logical_device.mapMemory(storage_buffer_memory, 0u, sizeof(input_data), {});
         // memcpy(output_data.data(), data, sizeof(input_data));
@@ -716,7 +743,7 @@ private:
             .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
         };
         if (
-            vk::Result result = vkCreateShaderModule(logical_device, &shader_module_ci, nullptr, &shader_module);
+            vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
             result != vk::Result::eSuccess
         ) {
             throw std::runtime_error("fail to create shader module");
@@ -757,7 +784,7 @@ private:
             .commandBufferCount = 1u,
         };
         if (
-            vk::Result result = logicalDevice.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
+            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
             result != vk::Result::eSuccess
         ) {
             throw std::runtime_error("_begin_single_time_commands: failed to allocate command buffer!");
@@ -782,7 +809,7 @@ private:
 
         vk::SubmitInfo submit_info {
             .waitSemaphoreCount = 0u,
-            .pWaitSemphores = nullptr,
+            .pWaitSemaphores = nullptr,
             .pWaitDstStageMask = {},
             .commandBufferCount = 1u,
             .pCommandBuffers = &commandBuffer,
@@ -792,13 +819,7 @@ private:
         if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to submit command buffer!");
         }
-
-        if (
-            vk::Result result = compute_queue.waitIdle(); // wait the calculation to finish
-            result == vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("compute queue not synchronization!");
-        }
+        compute_queue.waitIdle(); // wait the calculation to finish
 
         logical_device.freeCommandBuffers(command_pool, 1u, &commandBuffer);
     }
@@ -841,19 +862,6 @@ vk::PhysicalDeviceMemoryProperties query_physical_device_memory_properties(vk::P
     return physical_device_memory_properties;
 }
 #endif
-
-std::vector<char> read_shader_file(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) { throw std::runtime_error("failed to open file!"); }
-
-    std::size_t file_size = static_cast<std::size_t>(file.tellg());
-    std::vector<char> buffer(file_size);
-    file.seekg(0);
-    file.read(buffer.data(), file_size);
-    file.close();
-
-    return buffer;
-}
 
 
 int main() {
