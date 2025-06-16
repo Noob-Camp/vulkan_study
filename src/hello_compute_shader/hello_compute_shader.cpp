@@ -206,8 +206,8 @@ class HelloComputeShader {
         };
 
         vk::detail::DynamicLoader dynamic_loader;
-        PFN_vkGetInstanceProcAddr getInstanceProcAddr =
-            dynamic_loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        PFN_vkGetInstanceProcAddr
+        getInstanceProcAddr = dynamic_loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         vk::detail::DispatchLoaderDynamic dispatch_loader_dynamic(instance, getInstanceProcAddr);
 
         if (
