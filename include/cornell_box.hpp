@@ -12,8 +12,6 @@ static const char *cornell_box_string = R"(
 # http://www.graphics.cornell.edu/online/box/data.html
 #
 
-mtllib CornellBox-Original.mtl
-
 g floor
 v  -1.01  0.00   0.99
 v   1.00  0.00   0.99
