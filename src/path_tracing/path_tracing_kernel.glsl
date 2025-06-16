@@ -107,6 +107,12 @@ SurfaceHitRecord hit_triangle(
     return surface_hit_record
 }
 
+SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
+    SurfaceHitRecord surface_hit_record;
+    surface_hit_record.hit = false;
+    float t_closest = t_max;
+}
+
 uint tea(uint v0, uint v1) {
     uint s0 = 0u;
     for (uint n = 0u; n < 4u; ++n) {
@@ -156,8 +162,7 @@ layout(set = 0, binding = 1, std140) uniform Camera camera;
 layout(set = 0, binding = 2, rgba32f, std140) uniform image2D output_image;
 layout(set = 0, binding = 3, r32ui, std140) uniform image2D seed_image;
 
-layout(set = 1, binding = 0, std430) buffer vertices { vec3 vertices[]; }
-layout(set = 1, binding = 1, std430) buffer Triangles { vec3 triangles[]; }
+layout(set = 1, binding = 0, std430) readonly buffer vertices { vec3 vertices[]; }
 
 
 void main() {
