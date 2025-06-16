@@ -66,6 +66,7 @@ std::vector<char> read_shader_file(const std::string& fileName) {
 
 
 class HelloComputeShader {
+private:
     vk::Instance instance { nullptr };
     bool validation_layers_supported { false };
     vk::DebugUtilsMessengerEXT debug_utils_messenger { nullptr };
@@ -91,7 +92,7 @@ class HelloComputeShader {
     std::array<float, 1024uz> input_data;
     std::array<float, 1024uz> output_data;
 
-
+public:
     HelloComputeShader() {
         input_data.fill(1.0f);
         output_data.fill(0.0f);
