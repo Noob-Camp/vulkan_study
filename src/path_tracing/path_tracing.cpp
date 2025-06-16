@@ -114,6 +114,9 @@ class PathTracing {
     std::uint32_t compute_shader_process_unit { 0u };
     vk::Device logical_device { nullptr };
 
+    vk::CommandPool command_pool;
+    std::array<vk::CommandBuffer, 1uz> command_buffers;
+
     std::array<vk::Buffer, 2uz> uniform_buffers;
     std::array<vk::DeviceMemory, 2uz> uniform_device_memorys;
     std::array<vk::Buffer, 5uz> storage_buffers;
@@ -125,9 +128,6 @@ class PathTracing {
 
     vk::PipelineLayout pipeline_layout;
     vk::Pipeline compute_pipeline;
-
-    vk::CommandPool command_pool;
-    std::array<vk::CommandBuffer, 1uz> command_buffers;
 
 public:
     PathTracing() {
@@ -196,6 +196,13 @@ public:
             "Loaded mesh with {} shape(s) and {} vertices.",
             obj_reader.GetShapes().size(), scene_data.vertices.size()
         );
+        _create_buffer( // vertex buffer
+            scene_data.vertices.size(),
+            vk::BufferUsageFlagBits::eStorageBuffer,
+            storage_buffers[0uz],
+            storage_device_memorys[0uz]
+        );
+        _write_memory(storage_device_memorys[0uz], scene_data.vertices.data, scene_data.vertices.size());
 
         // mesh
         // for (auto &&shape : obj_reader.GetShapes()) {
@@ -221,14 +228,14 @@ public:
         pick_physical_device();
         create_logical_device();
 
+        create_command_pool();
+        create_command_buffer();
+
         create_buffers();
         create_descriptor_pool();
         create_descriptor_set_layout();
         create_descriptor_set();
         create_compute_pipeline();
-
-        create_command_pool();
-        create_command_buffer();
 
         execute();
     }
@@ -374,6 +381,34 @@ public:
         logical_device.getQueue(compute_queue_family_index.value(), 0, &compute_queue);
     }
 
+    void create_command_pool() {
+        vk::CommandPoolCreateInfo command_pool_ci {
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = compute_queue_family_index.value()
+        };
+
+        if (
+            vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create command pool!");
+        }
+    }
+
+    void create_command_buffer() {
+        vk::CommandBufferAllocateInfo command_buffer_ai {
+            .commandPool = command_pool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1u
+        };
+        if (
+            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, command_buffers.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create command buffer!");
+        }
+    }
+
     void create_buffers() {
         for (std::size_t i = 0uz; i < uniform_buffers.size(); ++i) {
             _create_buffer(
@@ -381,14 +416,6 @@ public:
                 vk::BufferUsageFlagBits::eUniformBuffer,
                 uniform_buffers[i],
                 uniform_device_memorys[i]
-            );
-        }
-        for (std::size_t i = 0uz; i < storage_buffers.size(); ++i) {
-            _create_buffer(
-                1920u * 1080u * 4u,
-                vk::BufferUsageFlagBits::eStorageBuffer,
-                storage_buffers[i],
-                storage_device_memorys[i]
             );
         }
     }
@@ -565,34 +592,6 @@ public:
         logical_device.destroyShaderModule(compute_shader_module, nullptr);
     }
 
-    void create_command_pool() {
-        vk::CommandPoolCreateInfo command_pool_ci {
-            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = compute_queue_family_index.value()
-        };
-
-        if (
-            vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create command pool!");
-        }
-    }
-
-    void create_command_buffer() {
-        vk::CommandBufferAllocateInfo command_buffer_ai {
-            .commandPool = command_pool,
-            .level = vk::CommandBufferLevel::ePrimary,
-            .commandBufferCount = 1u
-        };
-        if (
-            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, command_buffers.data());
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create command buffer!");
-        }
-    }
-
     void execute() {
         vk::CommandBufferBeginInfo command_buffer_begin_info {
             .flags = {},
@@ -620,9 +619,12 @@ public:
 
         vk::SubmitInfo submit_info {
             .waitSemaphoreCount = 0u,
+            .pWaitSemphores = nullptr,
+            .pWaitDstStageMask = {},
             .commandBufferCount = 1u,
             .pCommandBuffers = &command_buffers[0uz],
-            .signalSemaphoreCount = 0u
+            .signalSemaphoreCount = 0u,
+            .pSignalSemaphores = nullptr
         };
 
         if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
@@ -717,25 +719,83 @@ private:
         return shader_module;
     }
 
-#if 0
-    void read_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
+    void _read_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
         void* data { nullptr };
-        if (vkMapMemory(logical_device, memory, 0, size, 0, &data) != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to map memory");
+        if (
+            vk::Result result = logical_device.mapMemory(memory, 0u, size, {}, &data);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("_read_memory: failed to map memory");
         }
         memcpy(dataBlock, data, size);
-        vkUnmapMemory(device, memory);
+        logical_device.unmapMemory(memory);
     }
 
-    void write_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
+    void _write_memory(vk::DeviceMemory memory, void* dataBlock, vk::DeviceSize size) {
         void* data { nullptr };
-        if (vkMapMemory(logical_device, memory, 0u, size, 0u, &data) != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to map memory");
+        if (
+            vk::Result result = logical_device.mapMemory(memory, 0u, size, {}, &data);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("_write_memory: failed to map memory!");
         }
         memcpy(data, dataBlock, size);
-        vkUnmapMemory(device, memory);
+        logical_device.unmapMemory(memory);
     }
-#endif
+
+    vk::CommandBuffer _begin_single_time_commands() {
+        vk::CommandBuffer command_buffer;
+        vk::CommandBufferAllocateInfo command_buffer_ai {
+            .commandPool = command_pool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1u,
+        };
+        if (
+            vk::Result result = logicalDevice.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("_begin_single_time_commands: failed to allocate command buffer!");
+        }
+
+        vk::CommandBufferBeginInfo command_buffer_begin_info {
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+            .pInheritanceInfo = nullptr
+        };
+        if (
+            vk::Result result = command_buffer.begin(&command_buffer_begin_info);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("_begin_single_time_commands: command buffer failed to begin!");
+        }
+
+        return command_buffer;
+    }
+
+    void _end_single_time_commands(vk::CommandBuffer commandBuffer) {
+        commandBuffer.end();
+
+        vk::SubmitInfo submit_info {
+            .waitSemaphoreCount = 0u,
+            .pWaitSemphores = nullptr,
+            .pWaitDstStageMask = {},
+            .commandBufferCount = 1u,
+            .pCommandBuffers = &commandBuffer,
+            .signalSemaphoreCount = 0u,
+            .pSignalSemaphores = nullptr
+        };
+        if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
+            minilog::log_fatal("failed to submit command buffer!");
+        }
+
+        if (
+            vk::Result result = compute_queue.waitIdle(); // wait the calculation to finish
+            result == vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("compute queue not synchronization!");
+        }
+
+        logical_device.freeCommandBuffers(command_pool, 1u, &commandBuffer);
+    }
 };
 
 #if 0
