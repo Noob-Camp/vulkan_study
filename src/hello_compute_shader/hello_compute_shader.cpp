@@ -65,7 +65,7 @@ std::vector<char> read_shader_file(const std::string& fileName) {
 }
 
 
-struct HelloComputeShader {
+class HelloComputeShader {
     vk::Instance instance { nullptr };
     bool validation_layers_supported { false };
     vk::DebugUtilsMessengerEXT debug_utils_messenger { nullptr };
@@ -398,27 +398,9 @@ struct HelloComputeShader {
         logical_device.updateDescriptorSets(1u, &write_descriptor_set, 0u, nullptr);
     }
 
-    vk::ShaderModule create_shader_module(const std::vector<char>& code) {
-        vk::ShaderModuleCreateInfo shader_module_ci {
-            .flags = vk::ShaderModuleCreateFlags{},
-            .codeSize = code.size(),
-            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
-        };
-
-        vk::ShaderModule shader_module;
-        if (
-            vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create vk::ShaderModule");
-        }
-
-        return shader_module;
-    }
-
     void create_compute_pipeline() {
         std::vector<char> compute_shader_code = read_shader_file("./src/hello_compute_shader/compute_shader.spv");
-        vk::ShaderModule compute_shader_module = create_shader_module(compute_shader_code);
+        vk::ShaderModule compute_shader_module = _create_shader_module(compute_shader_code);
 
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
             .flags = vk::PipelineShaderStageCreateFlags{},
@@ -555,6 +537,24 @@ private:
 
         return 0u;
     }
+
+    vk::ShaderModule _create_shader_module(const std::vector<char>& code) {
+        vk::ShaderModuleCreateInfo shader_module_ci {
+            .flags = vk::ShaderModuleCreateFlags{},
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
+        };
+
+        vk::ShaderModule shader_module;
+        if (
+            vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::ShaderModule");
+        }
+
+        return shader_module;
+    }
 };
 
 
@@ -562,10 +562,10 @@ int main() {
     minilog::set_log_level(minilog::log_level::trace); // default log level is 'info'
     // minilog::set_log_file("./mini.log"); // dump log to a specific file
 
-    HelloComputeShader app {};
+    HelloComputeShader hello_compute_shader {};
 
     try {
-        app.run();
+        hello_compute_shader.run();
     } catch (std::runtime_error e) {
         std::cerr << e.what() << std::endl;
         return 1;
