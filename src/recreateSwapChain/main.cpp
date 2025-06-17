@@ -142,7 +142,6 @@ private:
     vk::SwapchainKHR swapchain { nullptr };
     vk::Format swapchain_image_format;
     vk::Extent2D swapchain_extent {};
-
     std::vector<vk::Image> swapchain_images;
     std::vector<vk::ImageView> swapchain_imageviews;
     std::vector<vk::Framebuffer> swapchain_framebuffers;
@@ -214,7 +213,7 @@ private:
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         glfw_window = glfwCreateWindow(width, height, window_name.c_str(), nullptr, nullptr);
-        if (glfw_window) { minilog::log_fatal("GLFW Failed to create GLFWwindow!"); }
+        if (!glfw_window) { minilog::log_fatal("GLFW Failed to create GLFWwindow!"); }
 
         glfwSetWindowUserPointer(glfw_window, this);
         glfwSetFramebufferSizeCallback(
@@ -234,12 +233,12 @@ private:
 
         create_surface();
         pick_physical_device();
-        createLogicalDevice();
+        create_logical_device();
 
-        createSwapChain();
-        createImageViews();
+        create_swapchain();
+        create_imageviews();
 
-        createRenderPass();
+        create_render_pass();
         createGraphicsPipeline();
 
         createFrameBuffers();
@@ -373,7 +372,7 @@ private:
         if (!physical_device) { minilog::log_fatal("failed to find a suitable GPU!"); }
     }
 
-    void createLogicalDevice() {
+    void create_logical_device() {
         QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
         std::set<std::uint32_t> unique_queue_families = {
             queue_family_index.graphic.value(),
@@ -384,9 +383,9 @@ private:
         std::vector<vk::DeviceQueueCreateInfo> device_queue_cis;
         for (std::uint32_t queue_family : unique_queue_families) {
             vk::DeviceQueueCreateInfo device_queue_ci {
-                .queueFamilyIndex = queue_family;
-                .queueCount = 1u;
-                .pQueuePriorities = &queuePriority;
+                .queueFamilyIndex = queue_family,
+                .queueCount = 1u,
+                .pQueuePriorities = &queuePriority
             };
             device_queue_cis.push_back(device_queue_ci);
         }
@@ -420,6 +419,119 @@ private:
         logical_device.getQueue(queue_family_index.present.value(), 0u, &present_queue);
     }
 
+    void create_swapchain() {
+        SwapChainSupportDetail swapchain_support_detail = query_swapchain_support(physical_device);
+        vk::SurfaceFormatKHR surface_format = choose_swapchain_surface_format(swapchain_support_detail.surface_formats);
+        vk::PresentModeKHR present_mode = choose_swapchain_present_mode(swapchain_support_detail.present_modes);
+        vk::Extent2D extent = choose_swapchain_extent(swapchain_support_detail.surface_capabilities);
+
+        std::uint32_t image_count = swapchain_support_detail.surface_capabilities.minImageCount + 1u; // realization of triple buffer
+        if (
+            (swapchain_support_detail.surface_capabilities.maxImageCount > 0u)
+            && (image_count > swapchain_support_detail.surface_capabilities.maxImageCount)
+        ) {
+            image_count = swapchain_support_detail.surface_capabilities.maxImageCount;
+        }
+
+        vk::SwapchainCreateInfoKHR swapchain_ci {
+            .flags = {},
+            .surface = surface,
+            .minImageCount = image_count,
+            .imageFormat = surface_format.format,
+            .imageColorSpace = surface_format.colorSpace,
+            .imageExtent = extent,
+            .imageArrayLayers = 1u,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+            .imageSharingMode = vk::SharingMode::eExclusive,
+            .queueFamilyIndexCount = 0u,
+            .pQueueFamilyIndices = nullptr,
+            .preTransform = swapchain_support_detail.surface_capabilities.currentTransform,
+            .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+            .presentMode = present_mode,
+            .clipped = vk::True,
+            .oldSwapchain = nullptr
+        };
+        QueueFamilyIndex indices = find_queue_families(physical_device);
+        std::array<std::uint32_t, 2uz> queue_family_indices {
+            indices.graphic.value(),
+            indices.present.value()
+        };
+        if (indices.graphic != indices.present) {
+            swapchain_ci.imageSharingMode = vk::SharingMode::eConcurrent;
+            swapchain_ci.queueFamilyIndexCount = 2;
+            swapchain_ci.pQueueFamilyIndices = queue_family_indices.data();
+        }
+
+        if (
+            vk::Result result = logical_device.createSwapchainKHR(&swapchain_ci, nullptr, &swapchain);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::SwapchainCreateInfoKHR!");
+        }
+
+        swapchain_images = logical_device.getSwapchainImagesKHR(swapchain);
+        swapchain_image_format = swapchain_ci.imageFormat;
+        swapchain_extent = swapchain_ci.imageExtent;
+    }
+
+    void create_imageviews() {
+        swapchain_imageviews.resize(swapchain_images.size());
+        for (std::size_t i { 0uz }; i < swapchain_images.size(); ++i) {
+            swapchain_imageviews[i] = create_imageview(
+                swapchain_images[i],
+                swapchain_image_format,
+                vk::ImageAspectFlagBits::eColor,
+                1u
+            );
+        }
+    }
+
+    void create_render_pass() {
+        vk::AttachmentDescription colorAttachment {
+            .flags = {},
+            .format = swapchain_image_format,
+            .samples = vk::SampleCountFlagBits::e1,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+            .initialLayout = vk::ImageLayout::eUndefined,
+            .finalLayout = vk::ImageLayout::ePresentSrcKHR
+        };
+
+        vk::AttachmentReference colorAttachmentRef {};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+        vk::SubpassDescription subpass {};
+        //subpass.flags = ;
+        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+
+        vk::SubpassDependency dependency {};
+        dependency.srcSubpass = vk::SubpassExternal;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        // dependency.srcAccessMask = 0;
+        dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+        //dependency.dependencyFlags = ;
+
+        vk::RenderPassCreateInfo renderPassInfo {};
+        //renderPassInfo.flags = ;
+        renderPassInfo.attachmentCount = 1;
+        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
+        if (logical_device.createRenderPass(&renderPassInfo, nullptr, &render_pass) != vk::Result::eSuccess) {
+            minilog::log_fatal("failed to create vk::RenderPass!");
+        }
+    }
+
     void cleanup_swapchain() {
         for (auto framebuffer : swapchain_framebuffers) { logical_device.destroy(framebuffer); }
         for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
@@ -437,8 +549,8 @@ private:
         logical_device.waitIdle();
 
         cleanup_swapchain();
-        createSwapChain();
-        createImageViews();
+        create_swapchain();
+        create_imageviews();
         createFrameBuffers();
     }
 
@@ -449,8 +561,6 @@ private:
 
         if (commandBuffer.begin(&beginInfo) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to begin recording command buffer!");
-        } else {
-            minilog::log_info("begin recording command buffer!");
         }
 
         vk::RenderPassBeginInfo renderPassBeginInfo {};
@@ -496,7 +606,12 @@ private:
     }
 
     void draw_frame() {
-        logical_device.waitForFences(1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+        if (
+            vk::Result result = logical_device.waitForFences(1, &in_flight_fences[current_frame], vk::True, UINT64_MAX);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("waitForFences failed!");
+        }
 
         std::uint32_t imageIndex { 0u };
         vk::Result result = logical_device.acquireNextImageKHR(swapchain, UINT64_MAX, image_available_semaphores[current_frame], nullptr, &imageIndex);
@@ -506,7 +621,12 @@ private:
         } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
             minilog::log_fatal("failed to acquire swap chain image!");
         }
-        logical_device.resetFences(1, &in_flight_fences[current_frame]);
+        if (
+            vk::Result result = logical_device.resetFences(1, &in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("resetFences failed!");
+        }
 
         command_buffers[current_frame].reset();
         recordCommandBuffer(command_buffers[current_frame], imageIndex);
@@ -528,8 +648,6 @@ private:
 
         if (graphics_queue.submit(1, &submitInfo, in_flight_fences[current_frame]) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to submit draw command buffer!");
-        } else {
-            minilog::log_info("submit draw command buffer successfully!");
         }
 
         vk::PresentInfoKHR presentInfo {
@@ -592,143 +710,6 @@ private:
 
 
 
-    void createSwapChain() {
-        SwapChainSupportDetail swapChainSupport = query_swapchain_support(physical_device);
-        vk::SurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.surface_formats);
-        vk::PresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.present_modes);
-        vk::Extent2D extent = chooseSwapExtent(swapChainSupport.surface_capabilities);
-
-        std::uint32_t imageCount = swapChainSupport.surface_capabilities.minImageCount + 1;// realization of triple buffer
-        if ((swapChainSupport.surface_capabilities.maxImageCount > 0)
-            && (imageCount > swapChainSupport.surface_capabilities.maxImageCount)
-        ) {
-            imageCount = swapChainSupport.surface_capabilities.maxImageCount;
-        }
-
-        vk::SwapchainCreateInfoKHR swapChainCreateInfo {};
-        //createInfo.flags =;
-        swapChainCreateInfo.surface = surface;
-        swapChainCreateInfo.minImageCount = imageCount;
-        swapChainCreateInfo.imageFormat = surfaceFormat.format;
-        swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
-        swapChainCreateInfo.imageExtent = extent;
-        swapChainCreateInfo.imageArrayLayers = 1;
-        swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
-
-        QueueFamilyIndex indices = find_queue_families(physical_device);
-        std::uint32_t queueFamilyIndices[] = {
-            indices.graphic.value(),
-            indices.present.value()
-        };
-        if (indices.graphic != indices.present) {
-            swapChainCreateInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-            swapChainCreateInfo.queueFamilyIndexCount = 2;
-            swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
-        } else {
-            swapChainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
-            swapChainCreateInfo.queueFamilyIndexCount = 0;
-            swapChainCreateInfo.pQueueFamilyIndices = nullptr;
-        }
-
-        swapChainCreateInfo.preTransform = swapChainSupport.surface_capabilities.currentTransform;
-        swapChainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-        swapChainCreateInfo.presentMode = presentMode;
-        swapChainCreateInfo.clipped = vk::Bool32(VK_TRUE);
-        swapChainCreateInfo.oldSwapchain = nullptr;
-
-        if (logical_device.createSwapchainKHR(&swapChainCreateInfo, nullptr, &swapchain) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::SwapchainCreateInfoKHR!");
-        } else {
-            minilog::log_info("create vk::SwapchainCreateInfoKHR successfully!");
-        }
-
-        swapchain_images = logical_device.getSwapchainImagesKHR(swapchain);
-        swapchain_image_format = swapChainCreateInfo.imageFormat;
-        swapchain_extent = swapChainCreateInfo.imageExtent;
-    }
-
-    void createImageViews() {
-        swapchain_imageviews.resize(swapchain_images.size());
-        for (std::size_t i = 0; i < swapchain_images.size(); ++i) {
-            vk::ImageViewCreateInfo viewCreateInfo {};
-            //viewCreateInfo.flags = ;
-            viewCreateInfo.image = swapchain_images[i];
-            viewCreateInfo.viewType = vk::ImageViewType::e2D;
-            viewCreateInfo.format = swapchain_image_format;
-
-            vk::ComponentMapping componentMappingInfo {};
-            componentMappingInfo.r = vk::ComponentSwizzle::eIdentity;
-            componentMappingInfo.g = vk::ComponentSwizzle::eIdentity;
-            componentMappingInfo.b = vk::ComponentSwizzle::eIdentity;
-            componentMappingInfo.a = vk::ComponentSwizzle::eIdentity;
-            viewCreateInfo.components = componentMappingInfo;
-
-            vk::ImageSubresourceRange imageSubresourceRange {};
-            imageSubresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-            imageSubresourceRange.baseMipLevel = 0;
-            imageSubresourceRange.levelCount = 1;
-            imageSubresourceRange.baseArrayLayer = 0;
-            imageSubresourceRange.layerCount = 1;
-            viewCreateInfo.subresourceRange = imageSubresourceRange;
-
-            if (logical_device.createImageView(
-                    &viewCreateInfo,
-                    nullptr,
-                    &swapchain_imageviews[i]) != vk::Result::eSuccess
-            ) {
-                minilog::log_fatal("failed to create vk::ImageView!");
-            } else {
-                minilog::log_info("create vk::ImageView successfully!");
-            }
-        }
-    }
-
-    void createRenderPass() {
-        vk::AttachmentDescription colorAttachment {};
-        //colorAttachment.flags = ;
-        colorAttachment.format = swapchain_image_format;
-        colorAttachment.samples = vk::SampleCountFlagBits::e1;
-        colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-        colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-        colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-        colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-        colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
-        colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
-
-        vk::AttachmentReference colorAttachmentRef {};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
-
-        vk::SubpassDescription subpass {};
-        //subpass.flags = ;
-        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-
-        vk::SubpassDependency dependency {};
-        dependency.srcSubpass = vk::SubpassExternal;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        // dependency.srcAccessMask = 0;
-        dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-        //dependency.dependencyFlags = ;
-
-        vk::RenderPassCreateInfo renderPassInfo {};
-        //renderPassInfo.flags = ;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
-
-        if (logical_device.createRenderPass(&renderPassInfo, nullptr, &render_pass) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::RenderPass!");
-        } else {
-            minilog::log_info("create vk::RenderPass successfully!");
-        }
-    }
 
     static std::vector<char> readFile(const std::string& fileName) {
         std::ifstream file(fileName, std::ios::ate | std::ios::binary);
@@ -755,8 +736,6 @@ private:
         vk::ShaderModule shaderModule;
         if (logical_device.createShaderModule(&createInfo, nullptr, &shaderModule) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::ShaderModule");
-        } else {
-            minilog::log_info("create vk::ShaderModule successfully!");
         }
 
         return shaderModule;
@@ -916,8 +895,6 @@ private:
             &render_pipeline) != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::Pipeline!");
-        } else {
-            minilog::log_info("create vk::Pipeline successfully!");
         }
 
         logical_device.destroyShaderModule(vertShaderModule, nullptr);
@@ -941,7 +918,6 @@ private:
                 minilog::log_fatal("failed to create vk::Framebuffer!");
             }
         }
-        minilog::log_info("create vk::Framebuffer successfully!");
     }
 
     void createCommandPool() {
@@ -953,8 +929,6 @@ private:
 
         if (logical_device.createCommandPool(&poolInfo, nullptr, &command_pool) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::CommandPool!");
-        } else {
-            minilog::log_info("create vk::CommandPool successfully!");
         }
     }
 
@@ -967,8 +941,6 @@ private:
 
         if (logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data()) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::CommandBuffer!");
-        } else {
-            minilog::log_info("create vk::CommandBuffer successfully!");
         }
     }
 
@@ -1005,8 +977,7 @@ private:
                 queue_family_index.graphic = i;
             }
 
-            vk::Bool32 is_present_support { false };
-            physicalDevice.getSurfaceSupportKHR(i, surface, &is_present_support);
+            vk::Bool32 is_present_support = physicalDevice.getSurfaceSupportKHR(i, surface);
             if (is_present_support) { queue_family_index.present = i; }
 
             if (queue_family_index.has_value()) { break; }
@@ -1018,7 +989,7 @@ private:
 
     SwapChainSupportDetail query_swapchain_support(vk::PhysicalDevice physicalDevice) {
         SwapChainSupportDetail swapchain_support_detail {};
-        physicalDevice.getSurfaceCapabilitiesKHR(surface, &swapchain_support_detail.surface_capabilities);
+        swapchain_support_detail.surface_capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
 
         swapchain_support_detail.surface_formats = physicalDevice.getSurfaceFormatsKHR(surface);
         swapchain_support_detail.present_modes = physicalDevice.getSurfacePresentModesKHR(surface);
@@ -1026,21 +997,22 @@ private:
         return swapchain_support_detail;
     }
 
-    vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
-    const std::vector<vk::SurfaceFormatKHR>& avaiableFormats
+    vk::SurfaceFormatKHR choose_swapchain_surface_format(
+        const std::vector<vk::SurfaceFormatKHR>& avaiableFormats
     ) {
-        for (const vk::SurfaceFormatKHR& availableFormat : avaiableFormats) {
-            if (availableFormat.format == vk::Format::eB8G8R8A8Unorm
-                && availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear
+        for (const auto& availableFormat : avaiableFormats) {
+            if (
+                (availableFormat.format == vk::Format::eB8G8R8A8Srgb)
+                && (availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
             ) {
                 return availableFormat;
             }
         }
 
-        return avaiableFormats[0];
+        return avaiableFormats[0uz];
     }
 
-    vk::PresentModeKHR chooseSwapPresentMode(
+    vk::PresentModeKHR choose_swapchain_present_mode(
         const std::vector<vk::PresentModeKHR>& avaiablePresentModes
     ) {
         for (const auto& avaiablePresentMode : avaiablePresentModes) {
@@ -1052,22 +1024,29 @@ private:
         return vk::PresentModeKHR::eFifo;
     }
 
-    vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {
+    vk::Extent2D choose_swapchain_extent(const vk::SurfaceCapabilitiesKHR& capabilities) {
         if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
             return capabilities.currentExtent;
-        } else {
-            vk::Extent2D actualExtent {};
-            actualExtent.width = std::max(
-                capabilities.minImageExtent.width,
-                std::min(capabilities.maxImageExtent.width, actualExtent.width)
-            );
-            actualExtent.height = std::max(
-                capabilities.minImageExtent.height,
-                std::min(capabilities.maxImageExtent.height, actualExtent.height)
-            );
-
-            return actualExtent;
         }
+
+        int width { 0 };
+        int height { 0 };
+        glfwGetFramebufferSize(glfw_window, &width, &height);
+
+        vk::Extent2D actual_extent {
+            .width = std::clamp(
+                static_cast<std::uint32_t>(width),
+                capabilities.minImageExtent.width,
+                capabilities.maxImageExtent.width
+            ),
+            .height = std::clamp(
+                static_cast<std::uint32_t>(height),
+                capabilities.minImageExtent.height,
+                capabilities.maxImageExtent.height
+            )
+        };
+
+        return actual_extent;
     }
 
     std::vector<const char*> get_required_extensions() {
@@ -1113,14 +1092,45 @@ private:
         vk::SampleCountFlags
         sample_counts = physical_device_properties.limits.framebufferColorSampleCounts
             & physical_device_properties.limits.framebufferDepthSampleCounts;
-        if (counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
-        if (counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
-        if (counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
-        if (counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
-        if (counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
-        if (counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
+        if (sample_counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
+        if (sample_counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
+        if (sample_counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
+        if (sample_counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
+        if (sample_counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
+        if (sample_counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
 
         return vk::SampleCountFlagBits::e1;
+    }
+
+    vk::ImageView create_imageview(
+        vk::Image image,
+        vk::Format format,
+        vk::ImageAspectFlags imageAspectFlags,
+        std::uint32_t mipLevels
+    ) {
+        vk::ImageViewCreateInfo imageview_info {
+            .flags = {},
+            .image = image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = format,
+            .subresourceRange {
+                .aspectMask = imageAspectFlags,
+                .baseMipLevel = 0u,
+                .levelCount = mipLevels,
+                .baseArrayLayer = 0u,
+                .layerCount = 1u,
+            }
+        };
+
+        vk::ImageView imageview;
+        if (
+            vk::Result result = logical_device.createImageView(&imageview_info, nullptr, &imageview);
+            result != vk::Result::eSuccess
+        ) {
+            throw std::runtime_error("failed to create image view!");
+        }
+
+        return imageview;
     }
 };
 
