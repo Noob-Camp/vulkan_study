@@ -40,7 +40,7 @@ using namespace std::literals::string_literals;
 
 
 const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validation" };
-const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName };
+// const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName }; // TODO
 const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionName };
 
 
@@ -68,7 +68,6 @@ debug_callback(
             minilog::log_trace("Vulkan Validation Layer [error]: {}", pCallbackData->pMessage);
             return vk::False;
         }
-
         default: { return vk::False; }
     }
 
@@ -110,9 +109,7 @@ struct QueueFamilyIndex {
     std::optional<std::uint32_t> graphic;
     std::optional<std::uint32_t> present;
 
-    bool has_value() {
-        return graphic.has_value() && present.has_value();
-    }
+    bool has_value() { return graphic.has_value() && present.has_value(); }
 };
 
 
@@ -232,7 +229,7 @@ private:
     void init_vulkan() {
         check_validation_layer_support();
         populateDebugUtilsMessengerCreateInfoEXT();
-        createInstance();
+        create_instance();
         setupDebugMessenger();
 
         createSurface();
@@ -275,6 +272,46 @@ private:
 
         if (ENABLE_VALIDATION_LAYER && (!validation_layers_supported)) {
             minilog::log_fatal("validation layers requested, but not available!");
+        }
+    }
+
+    void create_instance() {
+        std::uint32_t support_vulkan_version = vk::enumerateInstanceVersion();
+        auto version_major = vk::apiVersionMajor(support_vulkan_version);
+        auto version_minor = vk::apiVersionMinor(support_vulkan_version);
+        auto version_patch = vk::apiVersionPatch(support_vulkan_version);
+        minilog::log_debug(
+            "vulkan version(vk::enumerateInstanceVersion): {}.{}.{}",
+            version_major, version_minor, version_patch
+        );
+
+        vk::ApplicationInfo application_info {
+            .pApplicationName = "ReCreate the Swap Chain",
+            .applicationVersion = support_vulkan_version,
+            .pEngineName = "No Engine",
+            .engineVersion = support_vulkan_version,
+            .apiVersion = support_vulkan_version
+        };
+
+        auto instance_extensions = get_required_extensions();
+        vk::InstanceCreateInfo instance_ci {
+            .flags = {},
+            .pApplicationInfo = &application_info
+            .enabledLayerCount = 0u,
+            .ppEnabledLayerNames = nullptr,
+            .enabledExtensionCount = static_cast<std::uint32_t>(instance_extensions.size()),
+            .ppEnabledExtensionNames = instance_extensions.data()
+        };
+        if (ENABLE_VALIDATION_LAYER) {
+            instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
+            instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
+        }
+
+        if (
+            vk::Result result = vk::createInstance(&instance_ci, nullptr, &instance);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::Instance!");
         }
     }
 
@@ -470,39 +507,6 @@ private:
         debugCreateInfo.pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debug_callback);
         debugCreateInfo.pUserData = nullptr;// optional
     }
-
-    void createInstance() {
-        vk::ApplicationInfo appInfo {
-            .pApplicationName = "reCreate the Swap Chain",
-            .applicationVersion = VK_MAKE_VERSION(1, 3, 0),
-            .pEngineName = "No Engine",
-            .engineVersion = VK_MAKE_VERSION(1, 3, 0),
-            .apiVersion = VK_API_VERSION_1_3
-        };
-
-        vk::InstanceCreateInfo instanceCreateInfo {
-            .pApplicationInfo = &appInfo
-        };
-
-        if (ENABLE_VALIDATION_LAYER) {
-            instanceCreateInfo.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
-            instanceCreateInfo.ppEnabledLayerNames = VALIDATION_LAYERS.data();
-        } else {
-            instanceCreateInfo.enabledLayerCount = 0u;
-            instanceCreateInfo.ppEnabledLayerNames = nullptr;
-        }
-
-        std::vector<const char*> extensions = getRequiredExtensions();
-        instanceCreateInfo.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
-        instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-
-        if (vk::createInstance(&instanceCreateInfo, nullptr, &instance) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::Instance!");
-        } else {
-            minilog::log_info("create vk::Instance successfully!");
-        }
-    }
-
 
     void createSurface() {
         if (glfwCreateWindowSurface(
@@ -1061,16 +1065,13 @@ private:
         }
     }
 
-    std::vector<const char*> getRequiredExtensions() {
-        std::uint32_t glfwExtensionCount { 0u };
-        const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-        std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    std::vector<const char*> get_required_extensions() {
+        std::uint32_t glfw_extension_count { 0u };
+        const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+        std::vector<const char*> instance_extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
+        if (ENABLE_VALIDATION_LAYER) { instance_extensions.push_back(vk::EXTDebugUtilsExtensionName); }
 
-        if (ENABLE_VALIDATION_LAYER) {
-            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        }
-
-        return extensions;
+        return instance_extensions;
     }
 
     bool checkPhysicalDeviceExtensionSupport(vk::PhysicalDevice physicalDevice_) {
