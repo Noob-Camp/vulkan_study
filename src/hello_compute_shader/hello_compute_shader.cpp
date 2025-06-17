@@ -179,7 +179,7 @@ public:
 
         vk::InstanceCreateInfo instance_ci {
             .flags = {},
-            .pApplicationInfo = &application_info
+            .pApplicationInfo = &application_info,
             .enabledLayerCount = 0u,
             .ppEnabledLayerNames = nullptr,
             .enabledExtensionCount = static_cast<std::uint32_t>(INSTANCE_EXTENSIONS.size()),
@@ -255,19 +255,19 @@ public:
         };
 
         vk::DeviceCreateInfo device_ci {
+            .flags = {},
             .queueCreateInfoCount = 1u,
-            .pQueueCreateInfos = &device_queue_ci
+            .pQueueCreateInfos = &device_queue_ci,
+            .enabledLayerCount = 0u,
+            .ppEnabledLayerNames = nullptr,
+            .enabledExtensionCount = 0u,
+            .ppEnabledExtensionNames = nullptr,
+            .pEnabledFeatures = nullptr
         };
         if (ENABLE_VALIDATION_LAYER) {
             device_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
             device_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
-        } else {
-            device_ci.enabledLayerCount = 0u;
-            device_ci.ppEnabledLayerNames = nullptr;
         }
-        device_ci.enabledExtensionCount = 0u;
-        device_ci.ppEnabledExtensionNames = nullptr;
-        device_ci.pEnabledFeatures = nullptr;
 
         if (
             vk::Result result = physical_device.createDevice(&device_ci, nullptr, &logical_device);
