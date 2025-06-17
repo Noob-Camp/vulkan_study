@@ -131,10 +131,10 @@ class PathTracing {
     vk::CommandPool command_pool;
     std::array<vk::CommandBuffer, 1uz> command_buffers;
 
-    std::array<vk::Buffer, 2uz> uniform_buffers;
-    std::array<vk::DeviceMemory, 2uz> uniform_device_memorys;
-    std::array<vk::Buffer, 5uz> storage_buffers;
-    std::array <vk::DeviceMemory, 5uz> storage_device_memorys;
+    std::array<vk::Buffer, 4uz> uniform_buffers;
+    std::array<vk::DeviceMemory, 4uz> uniform_device_memorys;
+    std::array<vk::Buffer, 2uz> storage_buffers;
+    std::array<vk::DeviceMemory, 2uz> storage_device_memorys;
 
     vk::DescriptorPool descriptor_pool;
     std::array<vk::DescriptorSetLayout, 2uz> descriptor_set_layouts;
@@ -227,25 +227,38 @@ public:
         );
         _write_memory(storage_device_memorys[0uz], scene_data.vertices.data(), scene_data.vertices.size());
 
-        // mesh
-        int i = 0;
+        // indices
+        std::size_t index { 0uz };
+        std::vector<std::uint32_t> indices_data;
+        for (tinyobj::index_t i : t) { indices.emplace_back(i.vertex_index); }
         for (auto &&shape : obj_reader.GetShapes()) {
-            // std::uint32_t index = static_cast<std::uint32_t>(meshes.size());
-            std::vector<tinyobj::index_t> const &t = shape.mesh.indices;
-            std::size_t triangle_count = t.size() / 3uz;
+            const std::vector<tinyobj::index_t>& indices = shape.mesh.indices;
             minilog::log_debug(
                 "Processing shape '{}' at index {} with {} triangle(s).",
-                shape.name, i, triangle_count
+                shape.name, index, indices.size() / 3uz
             );
 
-            std::vector<std::uint32_t> indices;
-            indices.reserve(t.size());
-            for (tinyobj::index_t i : t) {
-                indices.emplace_back(i.vertex_index);
-                minilog::log_debug("indices: {}", i.vertex_index);
+            for (std::size_t i { 0uz }; i < indices.size(); i += 3uz) {
+                indices_data.push_back(i.vertex_index);
+                indices_data.push_back(i.vertex_index + 1uz);
+                indices_data.push_back(i.vertex_index + 2uz);
+                scene_data.triangles.emplace_back(
+                    Triangle { i.vertex_index, i.vertex_index + 1uz, i.vertex_index + 2uz }
+                );
+                minilog::log_debug(
+                    "scene_data.triangles[{}]: {}, {}, {}",
+                    i.vertex_index, i.vertex_index + 1uz, i.vertex_index + 2uz
+                );
             }
-            ++i;
+            ++index;
         }
+        _create_buffer( // index buffer
+            scene_data.triangles.size() * 3uz,
+            vk::BufferUsageFlagBits::eStorageBuffer,
+            storage_buffers[1uz],
+            storage_device_memorys[1uz]
+        );
+        _write_memory(storage_device_memorys[1uz], indices_data.data(), scene_data.triangles.size() * 3uz);
     }
 
     void run() {
@@ -326,7 +339,7 @@ public:
         if (!ENABLE_VALIDATION_LAYER) { return ; }
 
         vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
-            .flags = vk::DebugUtilsMessengerCreateFlagsEXT{},
+            .flags = {},
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
                 | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
                 | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
@@ -476,7 +489,7 @@ public:
         }
 
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
-            .flags = vk::DescriptorPoolCreateFlags{},
+            .flags = {},
             .maxSets = 2u,
             .poolSizeCount = static_cast<std::uint32_t>(descriptor_pool_sizes.size()),
             .pPoolSizes = descriptor_pool_sizes.data()
@@ -492,7 +505,7 @@ public:
 
     void create_descriptor_set_layout() {
         {
-            std::array<vk::DescriptorSetLayoutBinding, 2uz> descriptor_set_layout_bindings;
+            std::array<vk::DescriptorSetLayoutBinding, 4uz> descriptor_set_layout_bindings;
             for (std::size_t i { 0uz }; i < descriptor_set_layout_bindings.size(); ++i) {
                 vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
                     .binding = static_cast<std::uint32_t>(i),
@@ -505,7 +518,7 @@ public:
             }
 
             vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-                .flags = vk::DescriptorSetLayoutCreateFlags{},
+                .flags = {},
                 .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
                 .pBindings = descriptor_set_layout_bindings.data()
             };
@@ -520,7 +533,7 @@ public:
             }
         }
         {
-            std::array<vk::DescriptorSetLayoutBinding, 5uz> descriptor_set_layout_bindings;
+            std::array<vk::DescriptorSetLayoutBinding, 2uz> descriptor_set_layout_bindings;
             for (std::size_t i { 0uz }; i < descriptor_set_layout_bindings.size(); ++i) {
                 vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
                     .binding = static_cast<std::uint32_t>(i),
@@ -533,7 +546,7 @@ public:
             }
 
             vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-                .flags = vk::DescriptorSetLayoutCreateFlags{},
+                .flags = {},
                 .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
                 .pBindings = descriptor_set_layout_bindings.data()
             };
@@ -562,7 +575,49 @@ public:
             minilog::log_fatal("failed to create vk::DescriptorSet");
         }
 
-        // TODO
+        std::array<vk::WriteDescriptorSet, 2uz> write_descriptor_sets;
+        {
+            vk::DescriptorBufferInfo descriptor_buffer_info {
+                .buffer = storage_buffers[0uz],
+                .offset = 0u,
+                .range = scene_data.vertices.size() * 4uz
+            };
+            vk::WriteDescriptorSet write_descriptor_set {
+                .dstSet = descriptor_sets[1uz],
+                .dstBinding = 0u,
+                .dstArrayElement = 0u,
+                .descriptorCount = 1u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &descriptor_buffer_info,
+                .pTexelBufferView = nullptr
+            };
+            write_descriptor_sets[0uz] = write_descriptor_set;
+        }
+        {
+            vk::DescriptorBufferInfo descriptor_buffer_info {
+                .buffer = storage_buffers[1uz],
+                .offset = 0u,
+                .range = scene_data.triangles.size() * 3uz * 4uz
+            };
+            vk::WriteDescriptorSet write_descriptor_set {
+                .dstSet = descriptor_sets[1uz],
+                .dstBinding = 1u,
+                .dstArrayElement = 0u,
+                .descriptorCount = 1u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &descriptor_buffer_info,
+                .pTexelBufferView = nullptr
+            };
+            write_descriptor_sets[1uz] = write_descriptor_set;
+        }
+        logical_device.updateDescriptorSets(
+            static_cast<std::uint32_t>(write_descriptor_sets.size()),
+            write_descriptor_sets.data(),
+            0u,
+            nullptr
+        );
     }
 
     void create_compute_pipeline() {
@@ -701,7 +756,7 @@ private:
         vk::DeviceMemory& memory
     ) {
         vk::BufferCreateInfo buffer_ci {
-            .flags = vk::BufferCreateFlags{},
+            .flags = {},
             .size = size, // 1920u * 1080u * 4u
             .usage = usage,
             .sharingMode = vk::SharingMode::eExclusive,

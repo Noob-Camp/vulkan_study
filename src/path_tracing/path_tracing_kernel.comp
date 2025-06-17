@@ -186,9 +186,8 @@ layout(set = 0, binding = 1, std140) uniform Camera camera;
 layout(set = 0, binding = 2, rgba32f, std140) uniform image2D output_image;
 layout(set = 0, binding = 3, r32ui, std140) uniform image2D seed_image;
 
-layout(set = 1, binding = 0, std430) readonly buffer VerticesBuffer {
-    vec3 data[];
-} vertices;
+layout(set = 1, binding = 0, std430) readonly buffer VerticesBuffer { vec3 data[]; } vertices;
+layout(set = 1, binding = 1, std430) readonly buffer IndicesBuffer { Triangle data[]; } indices;
 
 
 void main() {
