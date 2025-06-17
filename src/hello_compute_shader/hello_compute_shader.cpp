@@ -164,7 +164,10 @@ public:
         auto version_major = vk::apiVersionMajor(support_vulkan_version);
         auto version_minor = vk::apiVersionMinor(support_vulkan_version);
         auto version_patch = vk::apiVersionPatch(support_vulkan_version);
-        minilog::log_debug("vulkan version(vk::enumerateInstanceVersion): {}.{}.{}", version_major, version_minor, version_patch);
+        minilog::log_debug(
+            "vulkan version(vk::enumerateInstanceVersion): {}.{}.{}",
+            version_major, version_minor, version_patch
+        );
 
         vk::ApplicationInfo application_info {
             .pApplicationName = "hello compute shader",
