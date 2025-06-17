@@ -8,7 +8,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
-#include <stb/stb_image_write.h>
+// #include <stb/stb_image_write.h>
 
 #include <minilog.hpp>
 #include <cornell_box.hpp>
@@ -234,7 +234,6 @@ public:
         // indices
         std::size_t index { 0uz }; // for debug
         std::vector<std::uint32_t> indices_data;
-        for (tinyobj::index_t i : t) { indices.emplace_back(i.vertex_index); }
         for (auto &&shape : obj_reader.GetShapes()) {
             const std::vector<tinyobj::index_t>& indices = shape.mesh.indices;
             minilog::log_debug(
@@ -243,15 +242,22 @@ public:
             );
 
             for (std::size_t i { 0uz }; i < indices.size(); i += 3uz) {
-                indices_data.push_back(i.vertex_index + 0uz);
-                indices_data.push_back(i.vertex_index + 1uz);
-                indices_data.push_back(i.vertex_index + 2uz);
+                indices_data.push_back(indices[i + 0uz].vertex_index);
+                indices_data.push_back(indices[i + 1uz].vertex_index);
+                indices_data.push_back(indices[i + 2uz].vertex_index);
                 scene_data.triangles.emplace_back(
-                    Triangle { i.vertex_index, i.vertex_index + 1uz, i.vertex_index + 2uz }
+                    Triangle {
+                        indices[i + 0uz].vertex_index,
+                        indices[i + 1uz].vertex_index,
+                        indices[i + 2uz].vertex_index
+                    }
                 );
                 minilog::log_debug(
                     "scene_data.triangles[{}]: {}, {}, {}",
-                    i.vertex_index, i.vertex_index + 1uz, i.vertex_index + 2uz
+                    index,
+                    indices[i + 0uz].vertex_index,
+                    indices[i + 1uz].vertex_index,
+                    indices[i + 2uz].vertex_index
                 );
             }
             ++index;
