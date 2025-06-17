@@ -20,7 +20,7 @@ const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validatio
 const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName };
 
 
-VKAPI_ATTR VkBool32 VKAPI_CALL
+VKAPI_ATTR vk::Bool32 VKAPI_CALL
 debug_callback(
     vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     vk::DebugUtilsMessageTypeFlagsEXT messageType,
@@ -177,18 +177,23 @@ public:
             .apiVersion = support_vulkan_version
         };
 
-        vk::InstanceCreateInfo instance_ci { .pApplicationInfo = &application_info };
+        vk::InstanceCreateInfo instance_ci {
+            .flags = {},
+            .pApplicationInfo = &application_info
+            .enabledLayerCount = 0u,
+            .ppEnabledLayerNames = nullptr,
+            .enabledExtensionCount = static_cast<std::uint32_t>(INSTANCE_EXTENSIONS.size()),
+            .ppEnabledExtensionNames = INSTANCE_EXTENSIONS.data()
+        };
         if (ENABLE_VALIDATION_LAYER) {
             instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
             instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
-        } else {
-            instance_ci.enabledLayerCount = 0u;
-            instance_ci.ppEnabledLayerNames = nullptr;
         }
-        instance_ci.enabledExtensionCount = static_cast<std::uint32_t>(INSTANCE_EXTENSIONS.size());
-        instance_ci.ppEnabledExtensionNames = INSTANCE_EXTENSIONS.data();
 
-        if (vk::createInstance(&instance_ci, nullptr, &instance) != vk::Result::eSuccess) {
+        if (
+            vk::Result result = vk::createInstance(&instance_ci, nullptr, &instance);
+            result != vk::Result::eSuccess
+        ) {
             minilog::log_fatal("failed to create vk::Instance!");
         }
     }
