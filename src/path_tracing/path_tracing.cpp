@@ -225,10 +225,14 @@ public:
             storage_buffers[0uz],
             storage_device_memorys[0uz]
         );
-        _write_memory(storage_device_memorys[0uz], scene_data.vertices.data(), scene_data.vertices.size());
+        _write_memory(
+            storage_device_memorys[0uz],
+            scene_data.vertices.data(),
+            scene_data.vertices.size()
+        );
 
         // indices
-        std::size_t index { 0uz };
+        std::size_t index { 0uz }; // for debug
         std::vector<std::uint32_t> indices_data;
         for (tinyobj::index_t i : t) { indices.emplace_back(i.vertex_index); }
         for (auto &&shape : obj_reader.GetShapes()) {
@@ -239,7 +243,7 @@ public:
             );
 
             for (std::size_t i { 0uz }; i < indices.size(); i += 3uz) {
-                indices_data.push_back(i.vertex_index);
+                indices_data.push_back(i.vertex_index + 0uz);
                 indices_data.push_back(i.vertex_index + 1uz);
                 indices_data.push_back(i.vertex_index + 2uz);
                 scene_data.triangles.emplace_back(
@@ -258,7 +262,11 @@ public:
             storage_buffers[1uz],
             storage_device_memorys[1uz]
         );
-        _write_memory(storage_device_memorys[1uz], indices_data.data(), scene_data.triangles.size() * 3uz);
+        _write_memory(
+            storage_device_memorys[1uz],
+            indices_data.data(),
+            scene_data.triangles.size() * 3uz
+        );
     }
 
     void run() {
