@@ -56,7 +56,7 @@ struct Vertex {
 };
 namespace std {
 template<> struct hash<Vertex> {
-    size_t operator()(Vertex const& vertex) const {
+    std::size_t operator()(Vertex const& vertex) const {
         auto x = hash<glm::vec3>()(vertex.position);
         auto y = hash<glm::vec3>()(vertex.color) << 1;
         auto z = hash<glm::vec2>()(vertex.uv) << 1;
@@ -99,37 +99,37 @@ private:
     GLFWwindow* glfw_window { nullptr };
 
     vk::Instance instance { nullptr };
-    bool validationLayersSupported = false;
+    bool validationLayersSupported { false };
     vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo {};
     vk::DebugUtilsMessengerEXT debugMessenger { nullptr };
 
     vk::PhysicalDevice physicalDevice { nullptr };
-    vk::Device logicalDevice { nullptr };
-    vk::Queue graphicsQueue { nullptr };
-    vk::Queue presentQueue { nullptr };
+    vk::Device logical_device { nullptr };
+    vk::Queue graphics_queue { nullptr };
+    vk::Queue present_queue { nullptr };
 
     vk::SurfaceKHR surface { nullptr };
-    vk::SwapchainKHR swapChain { nullptr };
-    vk::Format swapChainImageFormat;
-    vk::Extent2D swapChainExtent {};
+    vk::SwapchainKHR swapchain { nullptr };
+    vk::Format swapchain_image_format;
+    vk::Extent2D swapchain_extent {};
 
-    std::vector<vk::Image> swapChainImages;
-    std::vector<vk::ImageView> swapChainImageViews;
-    std::vector<vk::Framebuffer> swapChainFramebuffers;
+    std::vector<vk::Image> swapchain_images;
+    std::vector<vk::ImageView> swapchain_imageviews;
+    std::vector<vk::Framebuffer> swapchain_framebuffers;
 
-    vk::RenderPass renderPass { nullptr };
-    vk::PipelineLayout renderPipelineLayout { nullptr };
-    vk::Pipeline graphicsPipeline { nullptr };
+    vk::RenderPass render_pass { nullptr };
+    vk::PipelineLayout render_pipeline_layout { nullptr };
+    vk::Pipeline render_pipeline { nullptr };
 
-    vk::CommandPool commandPool { nullptr };
-    std::vector<vk::CommandBuffer> commandBuffers;
+    vk::CommandPool command_pool { nullptr };
+    std::vector<vk::CommandBuffer> command_buffers;
 
-    std::vector<vk::Semaphore> imageAvailableSemaphores;
-    std::vector<vk::Semaphore> renderFinishedSemaphores;
-    std::vector<vk::Fence> inFlightFences;
-    std::uint32_t currentFrame { 0u };
+    std::vector<vk::Semaphore> image_available_semaphores;
+    std::vector<vk::Semaphore> render_finished_semaphores;
+    std::vector<vk::Fence> in_flight_fences;
+    std::uint32_t current_frame { 0u };
     static constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT { 2u };
-    bool framebufferResized = false;
+    bool framebuffer_resized { false };
 
 public:
     Application() = default;
@@ -144,11 +144,37 @@ public:
         , window_name { window_name }
     {}
 
+    ~Application() {
+        cleanup_swapchain();
+
+        logical_device.destroy(render_pipeline);;
+        logical_device.destroy(render_pipeline_layout);
+        logical_device.destroy(render_pass);
+
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            logical_device.destroy(render_finished_semaphores[i]);
+            logical_device.destroy(image_available_semaphores[i]);
+            logical_device.destroy(in_flight_fences[i]);
+        }
+
+        logical_device.destroy(command_pool);
+        logical_device.destroy();
+
+        // if (enableValidationLayers) {
+        //     instance.destroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        // }
+
+        instance.destroy(surface);
+        instance.destroy();
+
+        glfwDestroyWindow(glfw_window);
+        glfwTerminate();
+    }
+
     void run() {
         init_window();
-        initVulkan();
-        mainLoop();
-        cleanUp();
+        init_vulkan();
+        render_loop();
     }
 
 private:
@@ -165,13 +191,13 @@ private:
             glfw_window,
             [](GLFWwindow* window, int width, int height) {
                 auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
-                app->framebufferResized = true;
+                app->framebuffer_resized = true;
                 minilog::log_info("the window's size is ({0}, {1})", width, height);
             }
         );
     }
 
-    void initVulkan() {
+    void init_vulkan() {
         checkValidationLayerSupport();
         populateDebugUtilsMessengerCreateInfoEXT();
         createInstance();
@@ -194,53 +220,18 @@ private:
         createSyncObjects();
     }
 
-    void mainLoop() {
+    void render_loop() {
         while (!glfwWindowShouldClose(glfw_window)) {
             glfwPollEvents();
-            drawFrame();
+            draw_frame();
         }
-        logicalDevice.waitIdle();
+        logical_device.waitIdle();
     }
 
-    void cleanupSwapChain() {
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
-        }
-
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(logicalDevice, imageView, nullptr);
-        }
-
-        vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
-    }
-
-    void cleanUp() {
-        cleanupSwapChain();
-
-        vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(logicalDevice, renderPipelineLayout, nullptr);
-
-        vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-
-        for (size_t i { 0u }; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
-            vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
-            vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
-        }
-
-        vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
-
-        vkDestroyDevice(logicalDevice, nullptr);
-
-        // if (enableValidationLayers) {
-        //     instance.destroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        // }
-
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-        vkDestroyInstance(instance, nullptr);
-
-        glfwDestroyWindow(glfw_window);
-        glfwTerminate();
+    void cleanup_swapchain() {
+        for (auto framebuffer : swapchain_framebuffers) { logical_device.destroy(framebuffer); }
+        for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
+        logical_device.destroy(swapchain);
     }
 
     void recreateSwapChain() {
@@ -251,9 +242,9 @@ private:
             glfwWaitEvents();
         }
 
-        logicalDevice.waitIdle();
+        logical_device.waitIdle();
 
-        cleanupSwapChain();
+        cleanup_swapchain();
         createSwapChain();
         createImageViews();
         createFrameBuffers();
@@ -271,12 +262,12 @@ private:
         }
 
         vk::RenderPassBeginInfo renderPassBeginInfo {};
-        renderPassBeginInfo.renderPass = renderPass;
-        renderPassBeginInfo.framebuffer = swapChainFramebuffers[imageIndex];
+        renderPassBeginInfo.render_pass = render_pass;
+        renderPassBeginInfo.framebuffer = swapchain_framebuffers[imageIndex];
         vk::Rect2D renderArea {};
         renderArea.offset.setX(0);
         renderArea.offset.setY(0);
-        renderArea.extent = swapChainExtent;
+        renderArea.extent = swapchain_extent;
         renderPassBeginInfo.renderArea = renderArea;
         vk::ClearValue clearColor {
             .color {
@@ -286,19 +277,19 @@ private:
         renderPassBeginInfo.clearValueCount = 1;
         renderPassBeginInfo.pClearValues = &clearColor;
         commandBuffer.beginRenderPass(&renderPassBeginInfo, vk::SubpassContents::eInline);
-            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+            commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
             vk::Viewport viewport {};
             viewport.x = 0.0f;
             viewport.y = 0.0f;
-            viewport.width = static_cast<float>(swapChainExtent.width);
-            viewport.height = static_cast<float>(swapChainExtent.height);
+            viewport.width = static_cast<float>(swapchain_extent.width);
+            viewport.height = static_cast<float>(swapchain_extent.height);
             viewport.minDepth = 0.0f;
             viewport.maxDepth = 1.0f;
             commandBuffer.setViewport(0, 1, &viewport);
 
             vk::Rect2D scissor{
                 .offset { .x = 0, .y = 0 },
-                .extent = swapChainExtent
+                .extent = swapchain_extent
             };
             commandBuffer.setScissor(0, 1, &scissor);
             commandBuffer.draw(3, 1, 0, 0);
@@ -312,38 +303,38 @@ private:
         // }
     }
 
-    void drawFrame() {
-        logicalDevice.waitForFences(1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    void draw_frame() {
+        logical_device.waitForFences(1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
         std::uint32_t imageIndex { 0u };
-        vk::Result result = logicalDevice.acquireNextImageKHR(swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], nullptr, &imageIndex);
+        vk::Result result = logical_device.acquireNextImageKHR(swapchain, UINT64_MAX, image_available_semaphores[current_frame], nullptr, &imageIndex);
         if (result == vk::Result::eErrorOutOfDateKHR) {
             recreateSwapChain();
             return;
         } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
             minilog::log_fatal("failed to acquire swap chain image!");
         }
-        logicalDevice.resetFences(1, &inFlightFences[currentFrame]);
+        logical_device.resetFences(1, &in_flight_fences[current_frame]);
 
-        commandBuffers[currentFrame].reset();
-        recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+        command_buffers[current_frame].reset();
+        recordCommandBuffer(command_buffers[current_frame], imageIndex);
 
-        vk::Semaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+        vk::Semaphore waitSemaphores[] = { image_available_semaphores[current_frame] };
         vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
         vk::SubmitInfo submitInfo {
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = waitSemaphores,
             .pWaitDstStageMask = waitStages,
             .commandBufferCount = 1,
-            .pCommandBuffers = &commandBuffers[currentFrame]
+            .pCommandBuffers = &command_buffers[current_frame]
         };
 
 
-        vk::Semaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+        vk::Semaphore signalSemaphores[] = { render_finished_semaphores[current_frame] };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        if (graphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]) != vk::Result::eSuccess) {
+        if (graphics_queue.submit(1, &submitInfo, in_flight_fences[current_frame]) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to submit draw command buffer!");
         } else {
             minilog::log_info("submit draw command buffer successfully!");
@@ -355,25 +346,25 @@ private:
         };
 
 
-        vk::SwapchainKHR swapChains[] = { swapChain };
+        vk::SwapchainKHR swapChains[] = { swapchain };
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
 
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
-        result = presentQueue.presentKHR(&presentInfo);
+        result = present_queue.presentKHR(&presentInfo);
 
         if (result == vk::Result::eErrorOutOfDateKHR
                         || result == vk::Result::eSuboptimalKHR
-                        || framebufferResized
+                        || framebuffer_resized
         ) {
-            framebufferResized = false;
+            framebuffer_resized = false;
             recreateSwapChain();
         } else if (result != vk::Result::eSuccess) {
             minilog::log_fatal("failed to present swap chain image!");
         }
 
-        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+        current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     VKAPI_ATTR VKAPI_CALL
@@ -554,14 +545,14 @@ private:
         physicalDeviceFeatures.samplerAnisotropy = vk::Bool32(VK_TRUE);
         deviceCreateInfo.pEnabledFeatures = &physicalDeviceFeatures;
 
-        if (physicalDevice.createDevice(&deviceCreateInfo, nullptr, &logicalDevice) != vk::Result::eSuccess) {
+        if (physicalDevice.createDevice(&deviceCreateInfo, nullptr, &logical_device) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create logical device!");
         } else {
             minilog::log_info("create logical device successfully!");
         }
 
-        logicalDevice.getQueue(indices.graphicsFamily.value(), 0, &graphicsQueue);
-        logicalDevice.getQueue(indices.presentFamily.value(), 0, &presentQueue);
+        logical_device.getQueue(indices.graphicsFamily.value(), 0, &graphics_queue);
+        logical_device.getQueue(indices.presentFamily.value(), 0, &present_queue);
     }
 
     void createSwapChain() {
@@ -608,25 +599,25 @@ private:
         swapChainCreateInfo.clipped = vk::Bool32(VK_TRUE);
         swapChainCreateInfo.oldSwapchain = nullptr;
 
-        if (logicalDevice.createSwapchainKHR(&swapChainCreateInfo, nullptr, &swapChain) != vk::Result::eSuccess) {
+        if (logical_device.createSwapchainKHR(&swapChainCreateInfo, nullptr, &swapchain) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::SwapchainCreateInfoKHR!");
         } else {
             minilog::log_info("create vk::SwapchainCreateInfoKHR successfully!");
         }
 
-        swapChainImages = logicalDevice.getSwapchainImagesKHR(swapChain);
-        swapChainImageFormat = swapChainCreateInfo.imageFormat;
-        swapChainExtent = swapChainCreateInfo.imageExtent;
+        swapchain_images = logical_device.getSwapchainImagesKHR(swapchain);
+        swapchain_image_format = swapChainCreateInfo.imageFormat;
+        swapchain_extent = swapChainCreateInfo.imageExtent;
     }
 
     void createImageViews() {
-        swapChainImageViews.resize(swapChainImages.size());
-        for (size_t i = 0; i < swapChainImages.size(); ++i) {
+        swapchain_imageviews.resize(swapchain_images.size());
+        for (std::size_t i = 0; i < swapchain_images.size(); ++i) {
             vk::ImageViewCreateInfo viewCreateInfo {};
             //viewCreateInfo.flags = ;
-            viewCreateInfo.image = swapChainImages[i];
+            viewCreateInfo.image = swapchain_images[i];
             viewCreateInfo.viewType = vk::ImageViewType::e2D;
-            viewCreateInfo.format = swapChainImageFormat;
+            viewCreateInfo.format = swapchain_image_format;
 
             vk::ComponentMapping componentMappingInfo {};
             componentMappingInfo.r = vk::ComponentSwizzle::eIdentity;
@@ -643,10 +634,10 @@ private:
             imageSubresourceRange.layerCount = 1;
             viewCreateInfo.subresourceRange = imageSubresourceRange;
 
-            if (logicalDevice.createImageView(
+            if (logical_device.createImageView(
                     &viewCreateInfo,
                     nullptr,
-                    &swapChainImageViews[i]) != vk::Result::eSuccess
+                    &swapchain_imageviews[i]) != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("failed to create vk::ImageView!");
             } else {
@@ -658,7 +649,7 @@ private:
     void createRenderPass() {
         vk::AttachmentDescription colorAttachment {};
         //colorAttachment.flags = ;
-        colorAttachment.format = swapChainImageFormat;
+        colorAttachment.format = swapchain_image_format;
         colorAttachment.samples = vk::SampleCountFlagBits::e1;
         colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
         colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
@@ -695,7 +686,7 @@ private:
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        if (logicalDevice.createRenderPass(&renderPassInfo, nullptr, &renderPass) != vk::Result::eSuccess) {
+        if (logical_device.createRenderPass(&renderPassInfo, nullptr, &render_pass) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::RenderPass!");
         } else {
             minilog::log_info("create vk::RenderPass successfully!");
@@ -709,7 +700,7 @@ private:
             minilog::log_fatal("failed to open file: {}", fileName);
         }
 
-        size_t fileSize = static_cast<size_t>(file.tellg());
+        std::size_t fileSize = static_cast<std::size_t>(file.tellg());
         std::vector<char> buffer(fileSize);
         file.seekg(0);
         file.read(buffer.data(), fileSize);
@@ -725,7 +716,7 @@ private:
         createInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
 
         vk::ShaderModule shaderModule;
-        if (logicalDevice.createShaderModule(&createInfo, nullptr, &shaderModule) != vk::Result::eSuccess) {
+        if (logical_device.createShaderModule(&createInfo, nullptr, &shaderModule) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::ShaderModule");
         } else {
             minilog::log_info("create vk::ShaderModule successfully!");
@@ -783,15 +774,15 @@ private:
         vk::Viewport viewport {};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapChainExtent.width);
-        viewport.height = static_cast<float>(swapChainExtent.height);
+        viewport.width = static_cast<float>(swapchain_extent.width);
+        viewport.height = static_cast<float>(swapchain_extent.height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
         vk::Rect2D scissor {};
         scissor.offset.setX(0);
         scissor.offset.setY(0);
-        scissor.extent = swapChainExtent;
+        scissor.extent = swapchain_extent;
 
         vk::PipelineViewportStateCreateInfo viewportInfo {};
         //viewportInfo.flags = ;
@@ -866,50 +857,50 @@ private:
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.setLayoutCount = 0;
         pipelineLayoutInfo.pushConstantRangeCount = 0;
-        if (logicalDevice.createPipelineLayout(
+        if (logical_device.createPipelineLayout(
             &pipelineLayoutInfo,
             nullptr,
-            &renderPipelineLayout) != vk::Result::eSuccess
+            &render_pipeline_layout) != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::PipelineLayout!");
         }
 
-        graphicsPipelineCreateInfo.layout = renderPipelineLayout;
-        graphicsPipelineCreateInfo.renderPass = renderPass;
+        graphicsPipelineCreateInfo.layout = render_pipeline_layout;
+        graphicsPipelineCreateInfo.render_pass = render_pass;
         graphicsPipelineCreateInfo.subpass = 0;
         graphicsPipelineCreateInfo.basePipelineHandle = nullptr;
         graphicsPipelineCreateInfo.basePipelineIndex = -1;
 
-        if (logicalDevice.createGraphicsPipelines(
+        if (logical_device.createGraphicsPipelines(
             nullptr,
             1,
             &graphicsPipelineCreateInfo,
             nullptr,
-            &graphicsPipeline) != vk::Result::eSuccess
+            &render_pipeline) != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::Pipeline!");
         } else {
             minilog::log_info("create vk::Pipeline successfully!");
         }
 
-        logicalDevice.destroyShaderModule(vertShaderModule, nullptr);
-        logicalDevice.destroyShaderModule(fragShaderModule, nullptr);
+        logical_device.destroyShaderModule(vertShaderModule, nullptr);
+        logical_device.destroyShaderModule(fragShaderModule, nullptr);
     }
 
     void createFrameBuffers() {
-        swapChainFramebuffers.resize(swapChainImageViews.size());
-        for (size_t i { 0u }; i < swapChainImageViews.size(); ++i) {
-            vk::ImageView attachments[] = { swapChainImageViews[i] };
+        swapchain_framebuffers.resize(swapchain_imageviews.size());
+        for (std::size_t i { 0u }; i < swapchain_imageviews.size(); ++i) {
+            vk::ImageView attachments[] = { swapchain_imageviews[i] };
             vk::FramebufferCreateInfo framebufferInfo {};
             //framebufferInfo.flages = ;
-            framebufferInfo.renderPass = renderPass;
+            framebufferInfo.render_pass = render_pass;
             framebufferInfo.attachmentCount = 1;
             framebufferInfo.pAttachments = attachments;
-            framebufferInfo.width = swapChainExtent.width;
-            framebufferInfo.height = swapChainExtent.height;
+            framebufferInfo.width = swapchain_extent.width;
+            framebufferInfo.height = swapchain_extent.height;
             framebufferInfo.layers = 1;
 
-            if (logicalDevice.createFramebuffer(&framebufferInfo, nullptr, &swapChainFramebuffers[i]) != vk::Result::eSuccess) {
+            if (logical_device.createFramebuffer(&framebufferInfo, nullptr, &swapchain_framebuffers[i]) != vk::Result::eSuccess) {
                 minilog::log_fatal("failed to create vk::Framebuffer!");
             }
         }
@@ -923,7 +914,7 @@ private:
         poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
         poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-        if (logicalDevice.createCommandPool(&poolInfo, nullptr, &commandPool) != vk::Result::eSuccess) {
+        if (logical_device.createCommandPool(&poolInfo, nullptr, &command_pool) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::CommandPool!");
         } else {
             minilog::log_info("create vk::CommandPool successfully!");
@@ -931,13 +922,13 @@ private:
     }
 
     void createCommandBuffer() {
-        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo allocInfo {};
-        allocInfo.commandPool = commandPool;
+        allocInfo.command_pool = command_pool;
         allocInfo.level = vk::CommandBufferLevel::ePrimary;
-        allocInfo.commandBufferCount = static_cast<std::uint32_t>(commandBuffers.size());
+        allocInfo.commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
 
-        if (logicalDevice.allocateCommandBuffers(&allocInfo, commandBuffers.data()) != vk::Result::eSuccess) {
+        if (logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data()) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::CommandBuffer!");
         } else {
             minilog::log_info("create vk::CommandBuffer successfully!");
@@ -946,9 +937,9 @@ private:
 
 
     void createSyncObjects() {
-        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
         vk::SemaphoreCreateInfo semaphoreInfo {};
         //semaphoreInfo.flags = ;
@@ -956,10 +947,10 @@ private:
         vk::FenceCreateInfo fenceInfo {};
         fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
 
-        for (size_t i { 0 }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            if (logicalDevice.createSemaphore(&semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != vk::Result::eSuccess
-                || logicalDevice.createSemaphore(&semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != vk::Result::eSuccess
-                || logicalDevice.createFence(&fenceInfo, nullptr, &inFlightFences[i]) != vk::Result::eSuccess
+        for (std::size_t i { 0 }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (logical_device.createSemaphore(&semaphoreInfo, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
+                || logical_device.createSemaphore(&semaphoreInfo, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
+                || logical_device.createFence(&fenceInfo, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("failed to create synchronization objects for a frame!");
             }
