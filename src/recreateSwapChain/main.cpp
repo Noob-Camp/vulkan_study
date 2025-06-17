@@ -31,16 +31,49 @@
 #include <set>
 
 #ifdef NDEBUG
-    const bool enableValidationLayers = false;
+    constexpr bool ENABLE_VALIDATION_LAYER { false };
 #else
-    const bool enableValidationLayers = true;
+    constexpr bool ENABLE_VALIDATION_LAYER { true };
 #endif
 
 using namespace std::literals::string_literals;
 
 
-const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-const std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validation" };
+const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName };
+const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionName };
+
+
+VKAPI_ATTR vk::Bool32 VKAPI_CALL
+debug_callback(
+    vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    vk::DebugUtilsMessageTypeFlagsEXT messageType,
+    const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData
+) {
+    switch (messageSeverity) {
+        case vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose: {
+            minilog::log_trace("Vulkan Validation Layer [verbose]: {}", pCallbackData->pMessage);
+            return vk::False;
+        }
+        case vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo: {
+            minilog::log_trace("Vulkan Validation Layer [info]: {}", pCallbackData->pMessage);
+            return vk::False;
+        }
+        case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning: {
+            minilog::log_trace("Vulkan Validation Layer [warning]: {}", pCallbackData->pMessage);
+            return vk::False;
+        }
+        case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError: {
+            minilog::log_trace("Vulkan Validation Layer [error]: {}", pCallbackData->pMessage);
+            return vk::False;
+        }
+
+        default: { return vk::False; }
+    }
+
+    return vk::False;
+}
 
 
 struct Vertex {
@@ -73,18 +106,17 @@ struct ProjectionTransformation {
 };
 
 
-struct QueueFamilyIndices {
-    std::optional<std::uint32_t> graphicsFamily;
-    std::optional<std::uint32_t> presentFamily;
+struct QueueFamilyIndex {
+    std::optional<std::uint32_t> graphic;
+    std::optional<std::uint32_t> present;
 
-    bool isComplete() {
-        return graphicsFamily.has_value()
-            && presentFamily.has_value();
+    bool has_value() {
+        return graphic.has_value() && present.has_value();
     }
 };
 
 
-struct SwapChainSupportDetails {
+struct SwapChainSupportDetail {
     vk::SurfaceCapabilitiesKHR surface_capabilities;
     std::vector<vk::SurfaceFormatKHR> surface_formats;
     std::vector<vk::PresentModeKHR> present_modes;
@@ -95,7 +127,7 @@ class Application {
 private:
     std::uint32_t width { 800u };
     std::uint32_t height { 600u };
-    const std::string window_name { "reCreate the Swap Chain"s };
+    std::string window_name { "reCreate the Swap Chain"s };
     GLFWwindow* glfw_window { nullptr };
 
     vk::Instance instance { nullptr };
@@ -160,7 +192,7 @@ public:
         logical_device.destroy(command_pool);
         logical_device.destroy();
 
-        // if (enableValidationLayers) {
+        // if (ENABLE_VALIDATION_LAYER) {
         //     instance.destroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         // }
 
@@ -198,7 +230,7 @@ private:
     }
 
     void init_vulkan() {
-        checkValidationLayerSupport();
+        check_validation_layer_support();
         populateDebugUtilsMessengerCreateInfoEXT();
         createInstance();
         setupDebugMessenger();
@@ -226,6 +258,24 @@ private:
             draw_frame();
         }
         logical_device.waitIdle();
+    }
+
+    void check_validation_layer_support() {
+        std::vector<vk::LayerProperties> available_layers = vk::enumerateInstanceLayerProperties();
+        for (const char* layer_name : VALIDATION_LAYERS) {
+            for (const vk::LayerProperties& layer_properties : available_layers) {
+                if (strcmp(layer_name, layer_properties.layerName) == 0) {
+                    validation_layers_supported = true;
+                    minilog::log_debug("the {} is supported!", layer_name);
+                    break;
+                }
+            }
+            if (validation_layers_supported) { break; }
+        }
+
+        if (ENABLE_VALIDATION_LAYER && (!validation_layers_supported)) {
+            minilog::log_fatal("validation layers requested, but not available!");
+        }
     }
 
     void cleanup_swapchain() {
@@ -367,16 +417,7 @@ private:
         current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    VKAPI_ATTR VKAPI_CALL
-    static vk::Bool32 debugCallback(
-        vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-        vk::DebugUtilsMessageTypeFlagsEXT messageType,
-        const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
-        void* pUserData
-    ) {
-        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-        return VK_FALSE;
-    }
+
 
     // vk::Result CreateDebugUtilsMessengerEXT(
     //     vk::Instance instance_,
@@ -394,7 +435,7 @@ private:
     // }
 
     void setupDebugMessenger() {
-        if (!enableValidationLayers) { return; }
+        if (!ENABLE_VALIDATION_LAYER) { return; }
         vk::detail::DynamicLoader dl;
         PFN_vkGetInstanceProcAddr getInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         vk::detail::DispatchLoaderDynamic dispatch(instance, getInstanceProcAddr);
@@ -416,23 +457,7 @@ private:
     // }
 
 
-    void checkValidationLayerSupport() {
-        std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
-        for (const char* layerName : validationLayers) {
-            for (const vk::LayerProperties& layerProperties : availableLayers) {
-                if (strcmp(layerName, layerProperties.layerName) == 0) {
-                    validationLayersSupported = true;
-                    minilog::log_info("the {} is supported!", layerName);
-                    break;
-                }
-            }
-            if (validationLayersSupported) { break; }
-        }
 
-        if (enableValidationLayers && (!validationLayersSupported)) {
-            minilog::log_fatal("validation layers requested, but not available!");
-        }
-    }
 
     void populateDebugUtilsMessengerCreateInfoEXT() {
         debugCreateInfo.flags = vk::DebugUtilsMessengerCreateFlagsEXT();
@@ -442,7 +467,7 @@ private:
         debugCreateInfo.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
                                         | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
-        debugCreateInfo.pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debugCallback);
+        debugCreateInfo.pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debug_callback);
         debugCreateInfo.pUserData = nullptr;// optional
     }
 
@@ -459,9 +484,9 @@ private:
             .pApplicationInfo = &appInfo
         };
 
-        if (enableValidationLayers) {
-            instanceCreateInfo.enabledLayerCount = static_cast<std::uint32_t>(validationLayers.size());
-            instanceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+        if (ENABLE_VALIDATION_LAYER) {
+            instanceCreateInfo.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
+            instanceCreateInfo.ppEnabledLayerNames = VALIDATION_LAYERS.data();
         } else {
             instanceCreateInfo.enabledLayerCount = 0u;
             instanceCreateInfo.ppEnabledLayerNames = nullptr;
@@ -507,11 +532,11 @@ private:
     }
 
     void createLogicalDevice() {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        QueueFamilyIndex indices = findQueueFamilies(physicalDevice);
         std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
         std::set<std::uint32_t> uniqueQueueFamilies = {
-            indices.graphicsFamily.value(),
-            indices.presentFamily.value()
+            indices.graphic.value(),
+            indices.present.value()
         };
 
         float queuePriority { 1.0f };
@@ -530,9 +555,9 @@ private:
         deviceCreateInfo.queueCreateInfoCount = static_cast<std::uint32_t>(queueCreateInfos.size());
         deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
 
-        if (enableValidationLayers) {
-            deviceCreateInfo.enabledLayerCount = static_cast<std::uint32_t>(validationLayers.size());
-            deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+        if (ENABLE_VALIDATION_LAYER) {
+            deviceCreateInfo.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
+            deviceCreateInfo.ppEnabledLayerNames = VALIDATION_LAYERS.data();
         } else {
             deviceCreateInfo.enabledLayerCount = 0;
             deviceCreateInfo.ppEnabledLayerNames = nullptr;
@@ -551,12 +576,12 @@ private:
             minilog::log_info("create logical device successfully!");
         }
 
-        logical_device.getQueue(indices.graphicsFamily.value(), 0, &graphics_queue);
-        logical_device.getQueue(indices.presentFamily.value(), 0, &present_queue);
+        logical_device.getQueue(indices.graphic.value(), 0, &graphics_queue);
+        logical_device.getQueue(indices.present.value(), 0, &present_queue);
     }
 
     void createSwapChain() {
-        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+        SwapChainSupportDetail swapChainSupport = querySwapChainSupport(physicalDevice);
         vk::SurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.surface_formats);
         vk::PresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.present_modes);
         vk::Extent2D extent = chooseSwapExtent(swapChainSupport.surface_capabilities);
@@ -578,12 +603,12 @@ private:
         swapChainCreateInfo.imageArrayLayers = 1;
         swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
 
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        QueueFamilyIndex indices = findQueueFamilies(physicalDevice);
         std::uint32_t queueFamilyIndices[] = {
-            indices.graphicsFamily.value(),
-            indices.presentFamily.value()
+            indices.graphic.value(),
+            indices.present.value()
         };
-        if (indices.graphicsFamily != indices.presentFamily) {
+        if (indices.graphic != indices.present) {
             swapChainCreateInfo.imageSharingMode = vk::SharingMode::eConcurrent;
             swapChainCreateInfo.queueFamilyIndexCount = 2;
             swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
@@ -908,11 +933,11 @@ private:
     }
 
     void createCommandPool() {
-        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+        QueueFamilyIndex queueFamilyIndices = findQueueFamilies(physicalDevice);
 
         vk::CommandPoolCreateInfo poolInfo {};
         poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+        poolInfo.queueFamilyIndex = queueFamilyIndices.graphic.value();
 
         if (logical_device.createCommandPool(&poolInfo, nullptr, &command_pool) != vk::Result::eSuccess) {
             minilog::log_fatal("failed to create vk::CommandPool!");
@@ -957,33 +982,33 @@ private:
         }
     }
 
-    QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice physicalDevice_) {
+    QueueFamilyIndex findQueueFamilies(vk::PhysicalDevice physicalDevice_) {
         std::vector<vk::QueueFamilyProperties> queueFamilies = physicalDevice_.getQueueFamilyProperties();
 
         std::uint32_t i { 0u };
-        QueueFamilyIndices indices {};
+        QueueFamilyIndex indices {};
         for (const vk::QueueFamilyProperties& queueFamily : queueFamilies) {
             if (static_cast<std::uint32_t>(queueFamily.queueFlags)
                 & static_cast<std::uint32_t>(vk::QueueFlagBits::eGraphics)
             ) {
-                indices.graphicsFamily = i;
+                indices.graphic = i;
             }
 
             vk::Bool32 isPresentSupport = false;
             physicalDevice_.getSurfaceSupportKHR(i, surface, &isPresentSupport);
             if (isPresentSupport) {
-                indices.presentFamily = i;
+                indices.present = i;
             }
 
-            if (indices.isComplete()) { break; }
+            if (indices.has_value()) { break; }
             ++i;
         }
 
         return indices;
     }
 
-    SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice physicalDevice_) {
-        SwapChainSupportDetails details {};
+    SwapChainSupportDetail querySwapChainSupport(vk::PhysicalDevice physicalDevice_) {
+        SwapChainSupportDetail details {};
         physicalDevice_.getSurfaceCapabilitiesKHR(surface, &details.surface_capabilities);
 
         details.surface_formats = physicalDevice_.getSurfaceFormatsKHR(surface);
@@ -1041,7 +1066,7 @@ private:
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-        if (enableValidationLayers) {
+        if (ENABLE_VALIDATION_LAYER) {
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
 
@@ -1059,12 +1084,12 @@ private:
     }
 
     bool isPhysicalDeviceSuitable(vk::PhysicalDevice physicalDevice_) {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice_);
+        QueueFamilyIndex indices = findQueueFamilies(physicalDevice_);
         bool extensionsSupported = checkPhysicalDeviceExtensionSupport(physicalDevice_);
 
         bool swapChainAdequate = false;
         if (extensionsSupported) {
-            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice_);
+            SwapChainSupportDetail swapChainSupport = querySwapChainSupport(physicalDevice_);
             swapChainAdequate = (!swapChainSupport.surface_formats.empty())
                                 && (!swapChainSupport.present_modes.empty());
         }
@@ -1072,7 +1097,7 @@ private:
         vk::PhysicalDeviceFeatures supportedFeatures {};// why somting are vkCreate others are vkGet
         physicalDevice_.getFeatures(&supportedFeatures);
 
-        return indices.isComplete()
+        return indices.has_value()
                 && extensionsSupported
                 && swapChainAdequate
                 && supportedFeatures.samplerAnisotropy;// specifies whether anisotropic filtering is supported
