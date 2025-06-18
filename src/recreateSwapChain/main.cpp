@@ -29,6 +29,7 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <stddef.h> // offsetof
 
 #ifdef NDEBUG
     constexpr bool ENABLE_VALIDATION_LAYER { false };
@@ -74,6 +75,18 @@ debug_callback(
     return vk::False;
 }
 
+std::vector<char> read_shader_file(const std::string& fileName) {
+    std::ifstream file(fileName, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) { minilog::log_fatal("failed to open file: {}", fileName); }
+
+    std::size_t file_size = static_cast<std::size_t>(file.tellg());
+    std::vector<char> buffer(file_size);
+    file.seekg(0);
+    file.read(buffer.data(), file_size);
+    file.close();
+
+    return buffer;
+}
 
 struct Vertex {
     glm::vec3 position;
@@ -241,11 +254,12 @@ private:
 
         create_render_pass();
         create_descriptor_set_layout();
-        createGraphicsPipeline();
+        create_graphic_pipeline();
+
+        create_command_pool();
+        allocate_command_buffers();
 
         createFrameBuffers();
-        createCommandPool();
-        createCommandBuffer();
 
         createSyncObjects();
     }
@@ -624,6 +638,242 @@ private:
         }
     }
 
+    void create_graphic_pipeline() {
+        std::vector<char> vert_code = read_shader_file("./src/recreateSwapChain/shaders/vert.spv");
+        std::vector<char> frag_code = read_shader_file("./src/recreateSwapChain/shaders/frag.spv");
+        vk::ShaderModule vert_shader_module = create_shader_module(vert_code);
+        vk::ShaderModule frag_shader_module = create_shader_module(frag_code);
+
+        vk::PipelineShaderStageCreateInfo vert_pipeline_shader_stage_ci {
+            .flags = {},
+            .stage = vk::ShaderStageFlagBits::eVertex,
+            .module = vert_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = nullptr
+        };
+
+        vk::PipelineShaderStageCreateInfo frag_pipeline_shader_stage_ci {
+            .flags = {},
+            .stage = vk::ShaderStageFlagBits::eFragment,
+            .module = frag_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = nullptr
+        };
+
+        std::array<vk::PipelineShaderStageCreateInfo, 2uz> pipeline_shader_stage_cis = {
+            vert_pipeline_shader_stage_ci,
+            frag_pipeline_shader_stage_ci
+        };
+
+        vk::VertexInputBindingDescription vertex_input_binding_desc {
+            .binding = 0u,
+            .stride = sizeof(Vertex),
+            .inputRate = vk::VertexInputRate::eVertex
+        };
+        std::array<vk::VertexInputAttributeDescription, 3uz> vertex_input_attribute_descs = {
+            vk::VertexInputAttributeDescription {
+                .location = 0u,
+                .binding = 0u,
+                .format = vk::Format::eR32G32B32Sfloat,
+                .offset = offsetof(Vertex, position)
+            },
+            vk::VertexInputAttributeDescription {
+                .location = 0u,
+                .binding = 1u,
+                .format = vk::Format::eR32G32B32Sfloat,
+                .offset = offsetof(Vertex, color)
+            },
+            vk::VertexInputAttributeDescription {
+                .location = 0u,
+                .binding = 2u,
+                .format = vk::Format::eR32G32Sfloat,
+                .offset = offsetof(Vertex, uv)
+            }
+        };
+        vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci {
+            .flags = {},
+            .vertexBindingDescriptionCount = 1u,
+            .pVertexBindingDescriptions = &vertex_input_binding_desc,
+            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(vertex_input_attribute_descs.size()),
+            .pVertexAttributeDescriptions = vertex_input_attribute_descs.data()
+        };
+
+        vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci {
+            .flags = {},
+            .topology = vk::PrimitiveTopology::eTriangleList,
+            .primitiveRestartEnable = vk::False
+        };
+
+        vk::PipelineTessellationStateCreateInfo tessellation_state_ci {};
+
+        vk::Viewport viewport {
+            .x = 0.0f;
+            .y = 0.0f;
+            .width = static_cast<float>(swapchain_extent.width);
+            .height = static_cast<float>(swapchain_extent.height);
+            .minDepth = 0.0f;
+            .maxDepth = 1.0f;
+        };
+        vk::Rect2D scissor {
+            .offset {
+                .x = 0u,
+                .y = 0u
+            }
+            .extent = swapchain_extent;
+        };
+        vk::PipelineViewportStateCreateInfo viewport_state_ci {
+            .flags = {};
+            .viewportCount = 1u;
+            .pViewports = &viewport;
+            .scissorCount = 1u;
+            .pScissors = &scissor;
+        };
+
+        vk::PipelineRasterizationStateCreateInfo rasterization_state_ci {
+            .flags = {},
+            .depthClampEnable = vk::False,
+            .rasterizerDiscardEnable = vk::False,
+            .polygonMode = vk::PolygonMode::eFill,
+            .cullMode = vk::CullModeFlagBits::eBack,
+            .frontFace = vk::FrontFace::eCounterClockwise,
+            .depthBiasEnable = vk::False,
+            .depthBiasClamp = 0.0f,
+            .depthBiasSlopeFactor = 0.0f,
+            .lineWidth = 1.0f
+        };
+
+        vk::PipelineMultisampleStateCreateInfo multisample_state_ci {
+            .flags = {},
+            .rasterizationSamples = msaa_samples,
+            .sampleShadingEnable = vk::False,
+            .minSampleShading = 0.0f,
+            .pSampleMask = nullptr,
+            .alphaToCoverageEnable = vk::False,
+            .alphaToOneEnable = vk::False
+        };
+
+        vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_ci {
+            .flags = {},
+            .depthTestEnable = vk::True,
+            .depthWriteEnable = vk::True,
+            .depthCompareOp = vk::CompareOp::eLess,
+            .depthBoundsTestEnable = vk::False,
+            .stencilTestEnable = vk::False,
+            .front = {},
+            .back = {},
+            .minDepthBounds = 0.0f,
+            .maxDepthBounds = 1.0f,
+        };
+
+        vk::PipelineColorBlendAttachmentState color_blend_attachment_state {
+            .blendEnable = vk::False,
+            .srcColorBlendFactor = vk::BlendFactor::eZero,
+            .dstColorBlendFactor = vk::BlendFactor::eZero,
+            .colorBlendOp = vk::BlendOp::eAdd,
+            .srcAlphaBlendFactor = vk::BlendFactor::eZero,
+            .dstAlphaBlendFactor = vk::BlendFactor::eZero,
+            .alphaBlendOp = vk::BlendOp::eAdd,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR
+                | vk::ColorComponentFlagBits::eG
+                | vk::ColorComponentFlagBits::eB
+                | vk::ColorComponentFlagBits::eA
+        };
+        std::array<float, 4uz> blend_constants = { 0.0f, 0.0f, 0.0f, 0.0f }; // RGBA
+        vk::PipelineColorBlendStateCreateInfo colorBlendStateInfo {
+            .flags = {},
+            .logicOpEnable = vk::False,
+            .logicOp = vk::LogicOp::eCopy,
+            .attachmentCount = 1u,
+            .pAttachments = &color_blend_attachment_state,
+            .blendConstants = blend_constants
+        };
+
+        std::vector<vk::DynamicState> dynamic_states = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor
+        };
+        vk::PipelineDynamicStateCreateInfo dynamic_state_ci {
+            .flags = {},
+            .dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size()),
+            .pDynamicStates = dynamic_states.data()
+        };
+
+        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .flags = {},
+            .setLayoutCount = 1u,
+            .pSetLayouts = &descriptor_set_layout,
+            .pushConstantRangeCount = 0u,
+            .pPushConstantRanges = nullptr
+        };
+        if (
+            vk::Result result = logical_device.createPipelineLayout(&pipeline_layout_ci, nullptr, &render_pipeline_layout);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::PipelineLayout!");
+        }
+
+        vk::GraphicsPipelineCreateInfo graphics_pipeline_ci {
+            .flags = {},
+            .stageCount = 2u,
+            .pStages = pipeline_shader_stage_cis.data(),
+            .pVertexInputState = &vertex_input_state_ci,
+            .pInputAssemblyState = &input_assembly_state_ci,
+            .pTessellationState = &tessellation_state_ci,
+            .pViewportState = &viewport_state_ci,
+            .pRasterizationState = &rasterization_state_ci,
+            .pMultisampleState = &multisample_state_ci,
+            .pDepthStencilState = &depth_stencil_state_ci,
+            .pColorBlendState = &colorBlendStateInfo,
+            .pDynamicState = &dynamic_state_ci,
+            .layout = render_pipeline_layout,
+            .renderPass = render_pass,
+            .subpass = 0u,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = 0,
+        };
+        if (
+            vk::Result result = logical_device.createGraphicsPipelines(
+                nullptr, 1, &graphics_pipeline_ci, nullptr, &render_pipeline
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::Pipeline!");
+        }
+
+        logical_device.destroyShaderModule(vert_shader_module, nullptr);
+        logical_device.destroyShaderModule(frag_shader_module, nullptr);
+    }
+
+    void create_command_pool() {
+        QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
+
+        vk::CommandPoolCreateInfo command_pool_ci {
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
+            .queueFamilyIndex = queue_family_index.graphic.value();
+        };
+        if (
+            vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::CommandPool!");
+        }
+    }
+
+    void allocate_command_buffers() {
+        command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        vk::CommandBufferAllocateInfo allocInfo {
+            .commandPool = command_pool;
+            .level = vk::CommandBufferLevel::ePrimary;
+            .commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
+        };
+        if (
+            vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to allocate command buffers!");
+        }
+    }
+
     void cleanup_swapchain() {
         for (auto framebuffer : swapchain_framebuffers) { logical_device.destroy(framebuffer); }
         for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
@@ -798,201 +1048,6 @@ private:
     //     }
     // }
 
-
-
-
-
-
-    static std::vector<char> readFile(const std::string& fileName) {
-        std::ifstream file(fileName, std::ios::ate | std::ios::binary);
-
-        if (!file.is_open()) {
-            minilog::log_fatal("failed to open file: {}", fileName);
-        }
-
-        std::size_t fileSize = static_cast<std::size_t>(file.tellg());
-        std::vector<char> buffer(fileSize);
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-        file.close();
-
-        return buffer;
-    }
-
-    vk::ShaderModule createShaderModule(const std::vector<char>& code) {
-        vk::ShaderModuleCreateInfo createInfo {};
-        //createInfo.flags = ;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
-
-        vk::ShaderModule shaderModule;
-        if (logical_device.createShaderModule(&createInfo, nullptr, &shaderModule) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::ShaderModule");
-        }
-
-        return shaderModule;
-    }
-
-    void createGraphicsPipeline() {
-        std::vector<char> vertCode = readFile("./src/recreateSwapChain/shaders/vert.spv");
-        std::vector<char> fragCode = readFile("./src/recreateSwapChain/shaders/frag.spv");
-        vk::ShaderModule vertShaderModule = createShaderModule(vertCode);
-        vk::ShaderModule fragShaderModule = createShaderModule(fragCode);
-
-        vk::PipelineShaderStageCreateInfo vertShaderStageInfo {};
-        // vertShaderStageInfo.flags = 0;
-        vertShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
-        vertShaderStageInfo.module = vertShaderModule;
-        vertShaderStageInfo.pName = "main";
-        vertShaderStageInfo.pSpecializationInfo = nullptr;
-
-        vk::PipelineShaderStageCreateInfo fragShaderStageInfo {};
-        // fragShaderStageInfo.flags = 0;
-        fragShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
-        fragShaderStageInfo.module = fragShaderModule;
-        fragShaderStageInfo.pName = "main";
-        fragShaderStageInfo.pSpecializationInfo = nullptr;
-
-        std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {
-            vertShaderStageInfo,
-            fragShaderStageInfo
-        };
-
-        vk::GraphicsPipelineCreateInfo graphicsPipelineCreateInfo {};// begin
-        //graphicsPipelineCreateInfo.flags = ;
-        graphicsPipelineCreateInfo.stageCount = 2;
-        graphicsPipelineCreateInfo.pStages = shaderStages.data();
-
-        vk::PipelineVertexInputStateCreateInfo vertexInputInfo {};
-        //vertexInputInfo.flags = ;
-        vertexInputInfo.vertexBindingDescriptionCount = 0;
-        vertexInputInfo.pVertexBindingDescriptions = nullptr;
-        vertexInputInfo.vertexAttributeDescriptionCount = 0;
-        vertexInputInfo.pVertexAttributeDescriptions = nullptr;
-        graphicsPipelineCreateInfo.pVertexInputState = &vertexInputInfo;///
-
-        vk::PipelineInputAssemblyStateCreateInfo inputAssemblyStateInfo {};
-        inputAssemblyStateInfo.topology = vk::PrimitiveTopology::eTriangleList;
-        inputAssemblyStateInfo.primitiveRestartEnable = vk::Bool32(VK_FALSE);
-        graphicsPipelineCreateInfo.pInputAssemblyState = &inputAssemblyStateInfo;///
-
-        vk::PipelineTessellationStateCreateInfo tessellationStateInfo {};
-        graphicsPipelineCreateInfo.pTessellationState = &tessellationStateInfo;///
-
-        vk::Viewport viewport {};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapchain_extent.width);
-        viewport.height = static_cast<float>(swapchain_extent.height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        vk::Rect2D scissor {};
-        scissor.offset.setX(0);
-        scissor.offset.setY(0);
-        scissor.extent = swapchain_extent;
-
-        vk::PipelineViewportStateCreateInfo viewportInfo {};
-        //viewportInfo.flags = ;
-        viewportInfo.viewportCount = 1;
-        viewportInfo.pViewports = &viewport;
-        viewportInfo.scissorCount = 1;
-        viewportInfo.pScissors = &scissor;
-        graphicsPipelineCreateInfo.pViewportState = &viewportInfo;///
-
-        vk::PipelineRasterizationStateCreateInfo rasterizationStateInfo {};
-        rasterizationStateInfo.depthClampEnable = vk::Bool32(VK_FALSE);
-        rasterizationStateInfo.rasterizerDiscardEnable = vk::Bool32(VK_FALSE);
-        rasterizationStateInfo.polygonMode = vk::PolygonMode::eFill;
-        rasterizationStateInfo.lineWidth = 1.0f;
-        rasterizationStateInfo.cullMode = vk::CullModeFlagBits::eFront;
-        rasterizationStateInfo.depthBiasEnable = vk::Bool32(VK_FALSE);
-        graphicsPipelineCreateInfo.pRasterizationState = &rasterizationStateInfo;///
-
-        vk::PipelineMultisampleStateCreateInfo multisampleStateInfo {};
-        multisampleStateInfo.sampleShadingEnable = vk::Bool32(VK_FALSE);
-        multisampleStateInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
-        graphicsPipelineCreateInfo.pMultisampleState = &multisampleStateInfo;///
-
-        vk::PipelineDepthStencilStateCreateInfo depthStencilStateInfo {};
-        //depthStencilStateInfo.flags =
-        depthStencilStateInfo.depthTestEnable = vk::Bool32(VK_TRUE);
-        depthStencilStateInfo.depthWriteEnable = vk::Bool32(VK_TRUE);
-        depthStencilStateInfo.depthCompareOp = vk::CompareOp::eLess;
-        depthStencilStateInfo.depthBoundsTestEnable = vk::Bool32(VK_FALSE);
-        depthStencilStateInfo.stencilTestEnable = vk::Bool32(VK_FALSE);
-        // depthStencilStateInfo.front = {};// Optional
-        // depthStencilStateInfo.back = {};// Optional
-        // depthStencilStateInfo.minDepthBounds = 0.0f;// Optional
-        // depthStencilStateInfo.maxDepthBounds = 1.0f;// Optional
-        graphicsPipelineCreateInfo.pDepthStencilState = &depthStencilStateInfo;///
-
-        vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
-        colorBlendAttachment.blendEnable = vk::Bool32(VK_FALSE);
-        // colorBlendAttachment.srcColorBlendFactor =
-        // colorBlendAttachment.dstColorBlendFactor =
-        // colorBlendAttachment.colorBlendOp =
-        // colorBlendAttachment.srcAlphaBlendFactor =
-        // colorBlendAttachment.dstAlphaBlendFactor =
-        // colorBlendAttachment.alphaBlendOp =
-        colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR
-                                                | vk::ColorComponentFlagBits::eG
-                                                | vk::ColorComponentFlagBits::eB
-                                                | vk::ColorComponentFlagBits::eA;
-
-        vk::PipelineColorBlendStateCreateInfo colorBlendStateInfo {};
-        //colorBlendStateInfo.flags =
-        colorBlendStateInfo.logicOpEnable = vk::Bool32(VK_FALSE);
-        colorBlendStateInfo.logicOp = vk::LogicOp::eCopy;
-        colorBlendStateInfo.attachmentCount = 1;
-        colorBlendStateInfo.pAttachments = &colorBlendAttachment;
-        colorBlendStateInfo.blendConstants[0] = 0.0f;// R
-        colorBlendStateInfo.blendConstants[1] = 0.0f;// G
-        colorBlendStateInfo.blendConstants[2] = 0.0f;// B
-        colorBlendStateInfo.blendConstants[3] = 0.0f;// A
-        graphicsPipelineCreateInfo.pColorBlendState = &colorBlendStateInfo;///
-
-        std::vector<vk::DynamicState> dynamicStates = {
-            vk::DynamicState::eViewport,
-            vk::DynamicState::eScissor
-        };
-        vk::PipelineDynamicStateCreateInfo dynamicStateInfo {};
-        //dynamicStateInfo.flags =;
-        dynamicStateInfo.dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size());
-        dynamicStateInfo.pDynamicStates = dynamicStates.data();
-        graphicsPipelineCreateInfo.pDynamicState = &dynamicStateInfo;///
-
-        vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
-        if (logical_device.createPipelineLayout(
-            &pipelineLayoutInfo,
-            nullptr,
-            &render_pipeline_layout) != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create vk::PipelineLayout!");
-        }
-
-        graphicsPipelineCreateInfo.layout = render_pipeline_layout;
-        graphicsPipelineCreateInfo.renderPass = render_pass;
-        graphicsPipelineCreateInfo.subpass = 0;
-        graphicsPipelineCreateInfo.basePipelineHandle = nullptr;
-        graphicsPipelineCreateInfo.basePipelineIndex = -1;
-
-        if (logical_device.createGraphicsPipelines(
-            nullptr,
-            1,
-            &graphicsPipelineCreateInfo,
-            nullptr,
-            &render_pipeline) != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("failed to create vk::Pipeline!");
-        }
-
-        logical_device.destroyShaderModule(vertShaderModule, nullptr);
-        logical_device.destroyShaderModule(fragShaderModule, nullptr);
-    }
-
     void createFrameBuffers() {
         swapchain_framebuffers.resize(swapchain_imageviews.size());
         for (std::size_t i { 0u }; i < swapchain_imageviews.size(); ++i) {
@@ -1011,31 +1066,6 @@ private:
             }
         }
     }
-
-    void createCommandPool() {
-        QueueFamilyIndex queueFamilyIndices = find_queue_families(physical_device);
-
-        vk::CommandPoolCreateInfo poolInfo {};
-        poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        poolInfo.queueFamilyIndex = queueFamilyIndices.graphic.value();
-
-        if (logical_device.createCommandPool(&poolInfo, nullptr, &command_pool) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::CommandPool!");
-        }
-    }
-
-    void createCommandBuffer() {
-        command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        vk::CommandBufferAllocateInfo allocInfo {};
-        allocInfo.commandPool = command_pool;
-        allocInfo.level = vk::CommandBufferLevel::ePrimary;
-        allocInfo.commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
-
-        if (logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data()) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to create vk::CommandBuffer!");
-        }
-    }
-
 
     void createSyncObjects() {
         image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1258,6 +1288,24 @@ private:
             vk::ImageTiling::eOptimal,
             vk::FormatFeatureFlagBits::eDepthStencilAttachment
         );
+    }
+
+    vk::ShaderModule create_shader_module(const std::vector<char>& code) {
+        vk::ShaderModuleCreateInfo shader_module_ci {
+            .flags = {},
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
+        };
+
+        vk::ShaderModule shader_module;
+        if (
+            vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::ShaderModule");
+        }
+
+        return shader_module;
     }
 };
 
