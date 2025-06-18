@@ -9,8 +9,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
-// #define STB_IMAGE_IMPLEMENTATION
-// #include <stb_image.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
@@ -173,6 +173,17 @@ private:
     vk::ImageView texture_imageview;
     vk::Sampler texture_sampler;
 
+    std::vector<Vertex> vertices;
+    std::vector<std::uint32_t> indices;
+    vk::Buffer vertex_buffer;
+    vk::DeviceMemory vertex_device_memory;
+    vk::Buffer index_buffer;
+    vk::DeviceMemory index_device_memory;
+
+    std::vector<vk::Buffer> uniform_buffers;
+    std::vector<vk::DeviceMemory> uniform_device_memorys;
+    std::vector<void*> uniform_buffers_mapped;
+
     vk::RenderPass render_pass;
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::PipelineLayout render_pipeline_layout;
@@ -271,6 +282,15 @@ private:
         create_frame_buffers();
         create_texture_image();
         create_texture_imageview();
+        create_texutre_sampler();
+
+        load_obj_model();
+        create_vertex_buffer();
+        create_index_buffer();
+        create_uniform_buffers();
+
+        create_descriptor_pool();
+        create_descriptor_sets();
 
         create_render_pass();
         create_descriptor_set_layout();
@@ -659,6 +679,157 @@ private:
             tex_height,
             mip_levels
         );
+    }
+
+    void create_texture_imageview() {
+        texture_imageview = create_imageview(
+            texture_image,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageAspectFlagBits::eColor,
+            mip_levels
+        );
+    }
+
+    void create_texutre_sampler() {
+        vk::PhysicalDeviceProperties physical_device_properties = physical_device.getProperties();
+
+        vk::SamplerCreateInfo sample_ci {
+            .flags = {},
+            .magFilter = vk::Filter::eLinear,
+            .minFilter = vk::Filter::eLinear,
+            .mipmapMode = vk::SamplerMipmapMode::eLinear,
+            .addressModeU = vk::SamplerAddressMode::eRepeat,
+            .addressModeV = vk::SamplerAddressMode::eRepeat,
+            .addressModeW = vk::SamplerAddressMode::eRepeat,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = vk::True,
+            .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
+            .compareEnable = vk::False,
+            .compareOp = vk::CompareOp::eAlways,
+            .minLod = 0.0f,
+            .maxLod = vk::LodClampNone,
+            .borderColor = vk::BorderColor::eIntOpaqueBlack,
+            .unnormalizedCoordinates = vk::False
+        };
+        if (
+            vk::Result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::Sampler!");
+        }
+    }
+
+    void load_obj_model() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string err { ""s };
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
+            throw std::runtime_error(err);
+        }
+
+        std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex {
+                    .position = {
+                        attrib.vertices[3uz * index.vertex_index + 0uz],
+                        attrib.vertices[3uz * index.vertex_index + 1uz],
+                        attrib.vertices[3uz * index.vertex_index + 2uz]
+                    },
+                    .color = { 1.0f, 1.0f, 1.0f },
+                    .uv = {
+                        attrib.texcoords[2uz * index.texcoord_index + 0uz],
+                        1.0f - attrib.texcoords[2uz * index.texcoord_index + 1uz]
+                    }
+                };
+                if (unique_vertices.count(vertex) == 0u) {
+                    unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(unique_vertices[vertex]);
+            }
+        }
+    }
+
+    void create_vertex_buffer() {
+        vk::DeviceSize vertex_device_size = sizeof(verties[0uz]) * vertices.size();
+
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        create_buffer(
+            vertex_device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size, {}, &data);
+        memcpy(data, vertices.data(), static_cast<std::size_t>(vertex_device_size));
+        logical_device.unmapMemory(staging_device_memory);
+
+        create_buffer(
+            vertex_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            vertex_buffer,
+            vertex_device_memory
+        );
+        copy_buffer(staging_buffer, vertex_buffer, vertex_device_size);
+
+        logical_device.destory(staging_buffer);
+        logicla_device.freeMemory(staging_device_memory);
+    }
+
+    void create_index_buffer() {
+        vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
+
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {}, &data);
+        memcpy(data, vertices.data(), static_cast<std::size_t>(index_device_size));
+        logical_device.unmapMemory(staging_device_memory);
+
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eIndexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            index_buffer,
+            index_device_memory
+        );
+        copy_buffer(staging_buffer, index_buffer, index_device_size);
+
+        logical_device.destory(staging_buffer);
+        logicla_device.freeMemory(staging_device_memory);
+    }
+
+    void create_uniform_buffers() {
+        uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        uniform_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
+        uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
+        vk::DeviceSize device_size = sizeof(ProjectionTransformation);
+        if (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            create_buffer(
+                device_size,
+                vk::BufferUsageFlagBits::eUniformBuffer,
+                vk::MemoryPropertyFlagBits::eHostVisible
+                | vk::MemoryPropertyFlagBits::eHostCoherent,
+                uniform_buffers[i],
+                uniform_device_memorys[i]
+            );
+            logical_device.mapMemory(uniform_device_memorys[i], 0u, device_size, {}, &uniform_buffers_mapped[i]);
+        }
     }
 
     void create_render_pass() {
@@ -1804,6 +1975,23 @@ private:
             0u, nullptr,
             1u, &image_memory_barrier
         );
+
+        end_single_time_commands(command_buffer);
+    }
+
+    void copy_buffer(
+        vk::Buffer srcBuffer,
+        vk::Buffer dstBuffer,
+        vk::DeviceMemory size
+    ) {
+        vk::CommandBuffer command_buffer = begin_single_time_commands();
+
+        vk::BufferCopy buffer_copy {
+            .srcOffset = 0u,
+            .dstOffset = 0u,
+            .size = size
+        };
+        command_buffer.copyBuffer(srcBuffer, dstBuffer, 1u, &buffer_copy);
 
         end_single_time_commands(command_buffer);
     }
