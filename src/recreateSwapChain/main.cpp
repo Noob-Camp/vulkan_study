@@ -44,8 +44,9 @@ const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validatio
 // const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName }; // TODO
 const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionName };
 
-const MODEL_PATH = "";
-const TEXTURE_PATH = "";
+const std::string MODEL_PATH = "./resource/viking_room.obj";
+const std::string TEXTURE_PATH = "./resource/viking_room.png";
+
 
 VKAPI_ATTR vk::Bool32 VKAPI_CALL
 debug_callback(
@@ -480,8 +481,8 @@ private:
         QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
 
         vk::CommandPoolCreateInfo command_pool_ci {
-            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-            .queueFamilyIndex = queue_family_index.graphic.value();
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = queue_family_index.graphic.value()
         };
         if (
             vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
@@ -494,9 +495,9 @@ private:
     void allocate_command_buffers() {
         command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo allocInfo {
-            .commandPool = command_pool;
-            .level = vk::CommandBufferLevel::ePrimary;
-            .commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
+            .commandPool = command_pool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = static_cast<std::uint32_t>(command_buffers.size())
         };
         if (
             vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data());
@@ -625,15 +626,15 @@ private:
                 color_imageview,
                 depth_imageview,
                 swapchain_imageviews[i]
-            }
+            };
             vk::FramebufferCreateInfo frame_buffer_ci {
-                .flages = {},
+                .flags = {},
                 .renderPass = render_pass,
                 .attachmentCount = static_cast<std::uint32_t>(imageviews.size()),
                 .pAttachments = imageviews.data(),
                 .width = swapchain_extent.width,
                 .height = swapchain_extent.height,
-                .layers = 1u,
+                .layers = 1u
             };
             if (
                 vk::Result result = logical_device.createFramebuffer(&frame_buffer_ci, nullptr, &swapchain_frame_buffers[i]);
@@ -659,8 +660,8 @@ private:
         create_buffer(
             image_device_size,
             vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible,
-            | vk::MemoryPropertyFlagBits::eCoherent,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
             staging_buffer,
             staging_device_memory
         );
@@ -680,7 +681,7 @@ private:
             vk::ImageUsageFlagBits::eTransferSrc
             | vk::ImageUsageFlagBits::eTransferDst
             | vk::ImageUsageFlagBits::eSampled,
-            vk::MemoryPropertyFlagBits::DeviceLocal,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
             texture_image,
             texture_device_memory
         );
@@ -700,7 +701,7 @@ private:
             static_cast<std::uint32_t>(tex_height)
         );
 
-        logical_device.destroy(buffer);
+        logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);
 
         generate_mipmaps(
@@ -743,7 +744,7 @@ private:
             .unnormalizedCoordinates = vk::False
         };
         if (
-            vk::Result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
+            vk::Result result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::Sampler!");
@@ -755,7 +756,7 @@ private:
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
         std::string err { ""s };
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, nullptr, MODEL_PATH.c_str())) {
             throw std::runtime_error(err);
         }
 
@@ -784,7 +785,7 @@ private:
     }
 
     void create_vertex_buffer() {
-        vk::DeviceSize vertex_device_size = sizeof(verties[0uz]) * vertices.size();
+        vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
 
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
@@ -796,7 +797,7 @@ private:
             staging_buffer,
             staging_device_memory
         );
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size, {}, &data);
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size);
         memcpy(data, vertices.data(), static_cast<std::size_t>(vertex_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
@@ -810,8 +811,8 @@ private:
         );
         copy_buffer(staging_buffer, vertex_buffer, vertex_device_size);
 
-        logical_device.destory(staging_buffer);
-        logicla_device.freeMemory(staging_device_memory);
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
     }
 
     void create_index_buffer() {
@@ -827,7 +828,7 @@ private:
             staging_buffer,
             staging_device_memory
         );
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {}, &data);
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {});
         memcpy(data, vertices.data(), static_cast<std::size_t>(index_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
@@ -841,8 +842,8 @@ private:
         );
         copy_buffer(staging_buffer, index_buffer, index_device_size);
 
-        logical_device.destory(staging_buffer);
-        logicla_device.freeMemory(staging_device_memory);
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
     }
 
     void create_uniform_buffers() {
@@ -850,7 +851,7 @@ private:
         uniform_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
         uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
         vk::DeviceSize device_size = sizeof(ProjectionTransformation);
-        if (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             create_buffer(
                 device_size,
                 vk::BufferUsageFlagBits::eUniformBuffer,
@@ -859,7 +860,7 @@ private:
                 uniform_buffers[i],
                 uniform_device_memorys[i]
             );
-            logical_device.mapMemory(uniform_device_memorys[i], 0u, device_size, {}, &uniform_buffers_mapped[i]);
+            uniform_buffers_mapped[i] = logical_device.mapMemory(uniform_device_memorys[i], 0u, device_size, {});
         }
     }
 
@@ -941,17 +942,17 @@ private:
             .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
                 | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
             .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-            .dependencyFlags = ,
+            // .dependencyFlags = ,
         };
 
         vk::RenderPassCreateInfo render_pass_ci {
             .flags = {},
             .attachmentCount = static_cast<std::uint32_t>(attachment_descs.size()),
-            .pAttachments = &attachment_descs.data(),
+            .pAttachments = attachment_descs.data(),
             .subpassCount = 1u,
             .pSubpasses = &subpass_desc,
             .dependencyCount = 1u,
-            .pDependencies = &subpass_dependency,
+            .pDependencies = &subpass_dependency
         };
 
         if (
@@ -965,16 +966,16 @@ private:
     void create_descriptor_set_layout() {
         vk::DescriptorSetLayoutBinding descriptor_set_layout_binding_ubo {
             .binding = 0u,
-            .descriptorType = 1u,
-            .descriptorCount = vk::DescriptorType::eUniformBuffer,
+            .descriptorType = vk::DescriptorType::eUniformBuffer,
+            .descriptorCount = 1u,
             .stageFlags = vk::ShaderStageFlagBits::eVertex,
             .pImmutableSamplers = nullptr
         };
 
         vk::DescriptorSetLayoutBinding descriptor_set_layout_binding_sampler {
             .binding = 1u,
-            .descriptorType = 1u,
-            .descriptorCount = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorCount = 1u,
             .stageFlags = vk::ShaderStageFlagBits::eFragment,
             .pImmutableSamplers = nullptr
         };
@@ -988,7 +989,7 @@ private:
             .flags = {},
             .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
             .pBindings = descriptor_set_layout_bindings.data()
-        }
+        };
         if (
             vk::Result result = logical_device.createDescriptorSetLayout(
                 &descriptor_set_layout_ci, nullptr, &descriptor_set_layout
@@ -1068,26 +1069,26 @@ private:
         vk::PipelineTessellationStateCreateInfo tessellation_state_ci {};
 
         vk::Viewport viewport {
-            .x = 0.0f;
-            .y = 0.0f;
-            .width = static_cast<float>(swapchain_extent.width);
-            .height = static_cast<float>(swapchain_extent.height);
-            .minDepth = 0.0f;
-            .maxDepth = 1.0f;
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(swapchain_extent.width),
+            .height = static_cast<float>(swapchain_extent.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f
         };
         vk::Rect2D scissor {
             .offset {
                 .x = 0u,
                 .y = 0u
-            }
-            .extent = swapchain_extent;
+            },
+            .extent = swapchain_extent
         };
         vk::PipelineViewportStateCreateInfo viewport_state_ci {
-            .flags = {};
-            .viewportCount = 1u;
-            .pViewports = &viewport;
-            .scissorCount = 1u;
-            .pScissors = &scissor;
+            .flags = {},
+            .viewportCount = 1u,
+            .pViewports = &viewport,
+            .scissorCount = 1u,
+            .pScissors = &scissor
         };
 
         vk::PipelineRasterizationStateCreateInfo rasterization_state_ci {
@@ -1341,12 +1342,12 @@ private:
         };
         commandBuffer.beginRenderPass(&render_pass_begin_info, vk::SubpassContents::eInline); // begin
         vk::Viewport viewport {
-            .x = 0.0f;
-            .y = 0.0f;
-            .width = static_cast<float>(swapchain_extent.width);
-            .height = static_cast<float>(swapchain_extent.height);
-            .minDepth = 0.0f;
-            .maxDepth = 1.0f;
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(swapchain_extent.width),
+            .height = static_cast<float>(swapchain_extent.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f
         };
         vk::Rect2D scissor {
             .offset { .x = 0, .y = 0 },
@@ -1357,7 +1358,7 @@ private:
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
-        commandBuffer.bindVertexBuffer(0u, 1u, vertex_buffers, offsets);
+        commandBuffer.bindVertexBuffers(0u, 1u, vertex_buffers, offsets);
         commandBuffer.bindIndexBuffer(index_buffer, 0u, vk::IndexType::eUint32);
         commandBuffer.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
@@ -1384,7 +1385,7 @@ private:
         std::uint32_t image_index { 0u };
         if (
             vk::Result result = logical_device.acquireNextImageKHR(
-                swapchain, UINT64_MAX, image_available_semaphores[current_frame], nullptr, &imageIndex
+                swapchain, UINT64_MAX, image_available_semaphores[current_frame], nullptr, &image_index
             );
             result == vk::Result::eErrorOutOfDateKHR
         ) {
@@ -1394,7 +1395,7 @@ private:
             minilog::log_fatal("failed to acquire swap chain image!");
         }
 
-        update_uniform_buffer(current_frame); // TODO
+        // update_uniform_buffer(current_frame); // TODO
 
         if (
             vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
@@ -1435,7 +1436,7 @@ private:
             .pResults = nullptr
         };
         if (
-            vkResult result = present_queue.presentKHR(&present_info);
+            vk::Result result = present_queue.presentKHR(&present_info);
             result == vk::Result::eErrorOutOfDateKHR
                 || result == vk::Result::eSuboptimalKHR
                 || framebuffer_resized
@@ -1455,7 +1456,7 @@ private:
         in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
         vk::SemaphoreCreateInfo semaphore_ci {};
-        vk::FenceCreateInfo fence_ci { .flags = vk::FenceCreateFlagBits::eSignaled; };
+        vk::FenceCreateInfo fence_ci { .flags = vk::FenceCreateFlagBits::eSignaled };
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             if (
                 logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
@@ -1637,7 +1638,7 @@ private:
     vk::Format find_supported_format(
         const std::vector<vk::Format>& candidates,
         vk::ImageTiling tiling,
-        vk::FormatFeaturesFlags features
+        vk::FormatFeatureFlags features
     ) {
         for (auto format : candidates) {
             vk::FormatProperties format_properties = physical_device.getFormatProperties(format);
@@ -1725,13 +1726,13 @@ private:
             minilog::log_fatal("failed to create vk::Image!");
         }
 
-        vk::MemoryRequirement memory_requirement = logical_device.getImageMemoryRequirements(image);
+        vk::MemoryRequirements memory_requirement = logical_device.getImageMemoryRequirements(image);
         vk::MemoryAllocateInfo memory_allocate_info {
             .allocationSize = memory_requirement.size,
             .memoryTypeIndex = find_memory_type(memory_requirement.memoryTypeBits, properties)
-        }
+        };
         if (
-            vk::Result result = logical_devic.allocateMemory(&memory_allocate_info, nullptr, &imageMemory);
+            vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &imageMemory);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to allocate vk::ImageMemory!");
@@ -1780,13 +1781,13 @@ private:
             minilog::log_fatal("failed to create vk::Buffer!");
         }
 
-        vk::MemoryRequirement memory_requirement = logical_device.getBufferMemoryRequirements(buffer);
+        vk::MemoryRequirements memory_requirement = logical_device.getBufferMemoryRequirements(buffer);
         vk::MemoryAllocateInfo memory_allocate_info {
             .allocationSize = memory_requirement.size,
             .memoryTypeIndex = find_memory_type(memory_requirement.memoryTypeBits, properties)
-        }
+        };
         if (
-            vk::Result result = logical_devic.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
+            vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to allocate vk::BufferMemory!");
@@ -1920,7 +1921,7 @@ private:
         vk::BufferImageCopy buffer_image_copy {
             .bufferOffset = 0u,
             .bufferRowLength = 0u,
-            .bufferIMageHeight = 0u,
+            .bufferImageHeight = 0u,
             .imageSubresource {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
                 .mipLevel = 0u,
@@ -2050,7 +2051,7 @@ private:
     void copy_buffer(
         vk::Buffer srcBuffer,
         vk::Buffer dstBuffer,
-        vk::DeviceMemory size
+        vk::DeviceSize size
     ) {
         vk::CommandBuffer command_buffer = begin_single_time_commands();
 
