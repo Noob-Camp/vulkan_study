@@ -147,6 +147,7 @@ private:
     std::vector<vk::Framebuffer> swapchain_framebuffers;
 
     vk::RenderPass render_pass { nullptr };
+    vk::DescriptorSetLayout descriptor_set_layout { nullptr };
     vk::PipelineLayout render_pipeline_layout { nullptr };
     vk::Pipeline render_pipeline { nullptr };
 
@@ -239,6 +240,7 @@ private:
         create_imageviews();
 
         create_render_pass();
+        create_descriptor_set_layout();
         createGraphicsPipeline();
 
         createFrameBuffers();
@@ -582,6 +584,43 @@ private:
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::RenderPass!");
+        }
+    }
+
+    void create_descriptor_set_layout() {
+        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding_ubo {
+            .binding = 0u,
+            .descriptorType = 1u,
+            .descriptorCount = vk::DescriptorType::eUniformBuffer,
+            .stageFlags = vk::ShaderStageFlagBits::eVertex,
+            .pImmutableSamplers = nullptr
+        };
+
+        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding_sampler {
+            .binding = 1u,
+            .descriptorType = 1u,
+            .descriptorCount = vk::DescriptorType::eCombinedImageSampler,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .pImmutableSamplers = nullptr
+        };
+
+        std::array<vk::DescriptorSetLayoutBinding, 2uz> descriptor_set_layout_bindings = {
+            descriptor_set_layout_binding_ubo,
+            descriptor_set_layout_binding_sampler
+        };
+
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .flags = {},
+            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+            .pBindings = descriptor_set_layout_bindings.data()
+        }
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("failed to create vk::DescriptorSetLayout!");
         }
     }
 
