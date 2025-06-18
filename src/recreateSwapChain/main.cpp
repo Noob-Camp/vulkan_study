@@ -132,7 +132,7 @@ private:
     vk::DebugUtilsMessengerEXT debug_utils_messenger { nullptr };
 
     vk::PhysicalDevice physical_device { nullptr };
-    vk::SampleCountFlagBits msaa_sample { vk::SampleCountFlagBits::e1 };
+    vk::SampleCountFlagBits msaa_samples { vk::SampleCountFlagBits::e1 };
 
     vk::Device logical_device { nullptr };
     vk::Queue graphics_queue { nullptr };
@@ -364,7 +364,7 @@ private:
         for (const vk::PhysicalDevice& device : physical_devices) {
             if (is_physical_device_suitable(device)) {
                 physical_device = device;
-                msaa_sample = get_max_usable_sample_count();
+                msaa_samples = get_max_usable_sample_count();
                 break;
             }
         }
@@ -487,47 +487,100 @@ private:
     }
 
     void create_render_pass() {
-        vk::AttachmentDescription colorAttachment {
+        vk::AttachmentDescription attachment_desc_color {
+            .flags = {},
+            .format = swapchain_image_format,
+            .samples = msaa_samples,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+            .initialLayout = vk::ImageLayout::eUndefined,
+            .finalLayout = vk::ImageLayout::eColorAttachmentOptimal
+        };
+        vk::AttachmentReference attachment_ref_color {
+            .attachment = 0u,
+            .layout = vk::ImageLayout::eColorAttachmentOptimal
+        };
+
+        vk::AttachmentDescription attachment_desc_depth {
+            .flags = {},
+            .format = find_depth_format(),
+            .samples = msaa_samples,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+            .initialLayout = vk::ImageLayout::eUndefined,
+            .finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal
+        };
+        vk::AttachmentReference attachment_ref_depth {
+            .attachment = 1u,
+            .layout = vk::ImageLayout::eDepthStencilAttachmentOptimal
+        };
+
+        vk::AttachmentDescription attachment_desc_color_resolve {
             .flags = {},
             .format = swapchain_image_format,
             .samples = vk::SampleCountFlagBits::e1,
-            .loadOp = vk::AttachmentLoadOp::eClear,
+            .loadOp = vk::AttachmentLoadOp::eDontCare,
             .storeOp = vk::AttachmentStoreOp::eStore,
             .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
             .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
             .initialLayout = vk::ImageLayout::eUndefined,
             .finalLayout = vk::ImageLayout::ePresentSrcKHR
         };
+        vk::AttachmentReference attachment_ref_color_resolve {
+            .attachment = 2u,
+            .layout = vk::ImageLayout::eColorAttachmentOptimal
+        };
 
-        vk::AttachmentReference colorAttachmentRef {};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+        std::array<vk::AttachmentDescription, 3uz> attachment_descs = {
+            attachment_desc_color,
+            attachment_desc_depth,
+            attachment_desc_color_resolve
+        };
 
-        vk::SubpassDescription subpass {};
-        //subpass.flags = ;
-        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
+        vk::SubpassDescription subpass_desc {
+            .flags = {},
+            .pipelineBindPoint = vk::PipelineBindPoint::eGraphics,
+            .inputAttachmentCount = 0u,
+            .pInputAttachments = nullptr,
+            .colorAttachmentCount = 1u,
+            .pColorAttachments = &attachment_ref_color,
+            .pResolveAttachments = &attachment_ref_color_resolve,
+            .pDepthStencilAttachment = &attachment_ref_depth,
+            .preserveAttachmentCount = 0u,
+            .pPreserveAttachments = nullptr
+        };
 
-        vk::SubpassDependency dependency {};
-        dependency.srcSubpass = vk::SubpassExternal;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        // dependency.srcAccessMask = 0;
-        dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-        //dependency.dependencyFlags = ;
+        vk::SubpassDependency subpass_dependency {
+            .srcSubpass = vk::SubpassExternal,
+            .dstSubpass = 0u,
+            .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput
+                | vk::PipelineStageFlagBits::eLateFragmentTests,
+            .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput
+                | vk::PipelineStageFlagBits::eEarlyFragmentTests,
+            .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
+                | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+            .dependencyFlags = ,
+        };
 
-        vk::RenderPassCreateInfo renderPassInfo {};
-        //renderPassInfo.flags = ;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
+        vk::RenderPassCreateInfo render_pass_ci {
+            .flags = {},
+            .attachmentCount = static_cast<std::uint32_t>(attachment_descs.size()),
+            .pAttachments = &attachment_descs.data(),
+            .subpassCount = 1u,
+            .pSubpasses = &subpass_desc,
+            .dependencyCount = 1u,
+            .pDependencies = &subpass_dependency,
+        };
 
-        if (logical_device.createRenderPass(&renderPassInfo, nullptr, &render_pass) != vk::Result::eSuccess) {
+        if (
+            vk::Result result = logical_device.createRenderPass(&render_pass_ci, nullptr, &render_pass);
+            result != vk::Result::eSuccess
+        ) {
             minilog::log_fatal("failed to create vk::RenderPass!");
         }
     }
@@ -1131,6 +1184,41 @@ private:
         }
 
         return imageview;
+    }
+
+    vk::Format find_supported_format(
+        const std::vector<vk::Format>& candidates,
+        vk::ImageTiling tiling,
+        vk::FormatFeaturesFlags features
+    ) {
+        for (auto format : candidates) {
+            vk::FormatProperties format_properties = physical_device.getFormatProperties(format);
+            if (
+                (tiling == vk::ImageTiling::eLinear)
+                && ((format_properties.linearTilingFeatures & features) == features)
+            ) {
+                return format;
+            } else if (
+                (tiling == vk::ImageTiling::eOptimal)
+                && ((format_properties.optimalTilingFeatures & features) == features)
+            ) {
+                return format;
+            }
+        }
+
+        throw std::runtime_error("failed to find supported vk::Format!");
+    }
+
+    vk::Format find_depth_format() {
+        return find_supported_format(
+            {
+                vk::Format::eD32Sfloat,
+                vk::Format::eD32SfloatS8Uint,
+                vk::Format::eD24UnormS8Uint
+            },
+            vk::ImageTiling::eOptimal,
+            vk::FormatFeatureFlagBits::eDepthStencilAttachment
+        );
     }
 };
 
