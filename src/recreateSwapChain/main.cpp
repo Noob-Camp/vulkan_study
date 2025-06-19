@@ -229,15 +229,15 @@ public:
         logical_device.destroy(render_pass);
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             logical_device.destroy(uniform_buffers[i]);
-            logical_device.destroy(uniform_device_memorys[i]);
+            logical_device.freeMemory(uniform_device_memorys[i]);
         }
         logical_device.destroy(index_buffer);
-        logical_device.destroy(index_device_memory);
+        logical_device.freeMemory(index_device_memory);
         logical_device.destroy(vertex_buffer);
-        logical_device.destroy(vertex_device_memory);
+        logical_device.freeMemory(vertex_device_memory);
         logical_device.destroy(texture_sampler);
         logical_device.destroy(texture_imageview);
-        logical_device.destroy(texture_device_memory);
+        logical_device.freeMemory(texture_device_memory);
         logical_device.destroy(texture_image);
         cleanup_swapchain();
         logical_device.destroy(command_pool);
@@ -660,7 +660,7 @@ private:
         std::string warn { ""s };
         std::string err { ""s };
         if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
-            minilog::log_fatal(warn + err);
+            minilog::log_fatal("{}", warn + err);
         }
 
         std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
@@ -1344,7 +1344,7 @@ private:
     void draw_frame() {
         if (
             vk::Result result = logical_device.waitForFences(
-                1u, &in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max();
+                1u, &in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
             );
             result != vk::Result::eSuccess
         ) {
@@ -1428,10 +1428,10 @@ private:
     void cleanup_swapchain() {
         logical_device.destroy(depth_imageview);
         logical_device.destroy(depth_image);
-        logical_device.destroy(depth_device_memory);
+        logical_device.freeMemory(depth_device_memory);
         logical_device.destroy(color_imageview);
         logical_device.destroy(color_image);
-        logical_device.destroy(color_device_memory);
+        logical_device.freeMemory(color_device_memory);
         for (auto& framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
         for (auto& imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
         for (auto& image : swapchain_images) { logical_device.destroy(image); }
@@ -1517,13 +1517,7 @@ private:
         );
         commandBuffer.drawIndexed(static_cast<std::uint32_t>(indices.size()), 1u, 0u, 0u, 0u);
         commandBuffer.endRenderPass(); // render pass end
-
-        if (
-            vk::Result result = commandBuffer.end(); // command buffer end
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to record command buffer!");
-        }
+        commandBuffer.end(); // command buffer end
     }
 
     QueueFamilyIndex find_queue_families(vk::PhysicalDevice physicalDevice) {
@@ -1550,9 +1544,9 @@ private:
 
     SwapChainSupportDetail query_swapchain_support_detail(vk::PhysicalDevice physicalDevice) {
         SwapChainSupportDetail swapchain_support_detail {
-            .surface_capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
-            .surface_formats = physicalDevice.getSurfaceFormatsKHR(surface);
-            .present_modes = physicalDevice.getSurfacePresentModesKHR(surface);
+            .surface_capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface),
+            .surface_formats = physicalDevice.getSurfaceFormatsKHR(surface),
+            .present_modes = physicalDevice.getSurfacePresentModesKHR(surface)
         };
 
         return swapchain_support_detail;
@@ -1715,6 +1709,8 @@ private:
         }
 
         minilog::log_fatal("Failed to find supported vk::Format!");
+
+        return {};
     }
 
     vk::Format find_depth_format() {
@@ -1817,6 +1813,8 @@ private:
         }
 
         minilog::log_fatal("Failed to find suitable memory type!");
+
+        return 0u;
     }
 
     void create_buffer(
@@ -2164,8 +2162,8 @@ private:
             ),
             .proj = glm::perspective(
                 glm::radians(45.0f),
-                static_cast<float>(swapChainExtent.width)
-                    / static_cast<float>(swapChainExtent.height),
+                static_cast<float>(swapchain_extent.width)
+                    / static_cast<float>(swapchain_extent.height),
                 0.1f,
                 10.0f
             )
