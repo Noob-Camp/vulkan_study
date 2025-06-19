@@ -984,6 +984,7 @@ private:
         };
 
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
             .flags = {},
             .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
             .pBindings = descriptor_set_layout_bindings.data()
@@ -999,27 +1000,27 @@ private:
     }
 
     void create_graphic_pipeline() {
+        // Create graphic pipeline layout
         std::vector<char> vert_code = read_shader_file("./src/recreateSwapChain/shaders/vert.spv");
         std::vector<char> frag_code = read_shader_file("./src/recreateSwapChain/shaders/frag.spv");
         vk::ShaderModule vert_shader_module = create_shader_module(vert_code);
         vk::ShaderModule frag_shader_module = create_shader_module(frag_code);
-
         vk::PipelineShaderStageCreateInfo vert_pipeline_shader_stage_ci {
+            .pNext = nullptr,
             .flags = {},
             .stage = vk::ShaderStageFlagBits::eVertex,
             .module = vert_shader_module,
             .pName = "main",
             .pSpecializationInfo = nullptr
         };
-
         vk::PipelineShaderStageCreateInfo frag_pipeline_shader_stage_ci {
+            .pNext = nullptr,
             .flags = {},
             .stage = vk::ShaderStageFlagBits::eFragment,
             .module = frag_shader_module,
             .pName = "main",
             .pSpecializationInfo = nullptr
         };
-
         std::array<vk::PipelineShaderStageCreateInfo, 2uz> pipeline_shader_stage_cis = {
             vert_pipeline_shader_stage_ci,
             frag_pipeline_shader_stage_ci
@@ -1038,19 +1039,20 @@ private:
                 .offset = offsetof(Vertex, position)
             },
             vk::VertexInputAttributeDescription {
-                .location = 0u,
-                .binding = 1u,
+                .location = 1u,
+                .binding = 0u,
                 .format = vk::Format::eR32G32B32Sfloat,
                 .offset = offsetof(Vertex, color)
             },
             vk::VertexInputAttributeDescription {
-                .location = 0u,
-                .binding = 2u,
+                .location = 2u,
+                .binding = 0u,
                 .format = vk::Format::eR32G32Sfloat,
                 .offset = offsetof(Vertex, uv)
             }
         };
         vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .vertexBindingDescriptionCount = 1u,
             .pVertexBindingDescriptions = &vertex_input_binding_desc,
@@ -1059,12 +1061,17 @@ private:
         };
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .topology = vk::PrimitiveTopology::eTriangleList,
             .primitiveRestartEnable = vk::False
         };
 
-        vk::PipelineTessellationStateCreateInfo tessellation_state_ci {};
+        vk::PipelineTessellationStateCreateInfo tessellation_state_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .patchControlPoints = 0u
+        };
 
         vk::Viewport viewport {
             .x = 0.0f,
@@ -1075,13 +1082,11 @@ private:
             .maxDepth = 1.0f
         };
         vk::Rect2D scissor {
-            .offset {
-                .x = 0u,
-                .y = 0u
-            },
+            .offset { .x = 0u, .y = 0u },
             .extent = swapchain_extent
         };
         vk::PipelineViewportStateCreateInfo viewport_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .viewportCount = 1u,
             .pViewports = &viewport,
@@ -1090,6 +1095,7 @@ private:
         };
 
         vk::PipelineRasterizationStateCreateInfo rasterization_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .depthClampEnable = vk::False,
             .rasterizerDiscardEnable = vk::False,
@@ -1103,6 +1109,7 @@ private:
         };
 
         vk::PipelineMultisampleStateCreateInfo multisample_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .rasterizationSamples = msaa_samples,
             .sampleShadingEnable = vk::False,
@@ -1113,6 +1120,7 @@ private:
         };
 
         vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .depthTestEnable = vk::True,
             .depthWriteEnable = vk::True,
@@ -1122,7 +1130,7 @@ private:
             .front = {},
             .back = {},
             .minDepthBounds = 0.0f,
-            .maxDepthBounds = 1.0f,
+            .maxDepthBounds = 1.0f
         };
 
         vk::PipelineColorBlendAttachmentState color_blend_attachment_state {
@@ -1139,7 +1147,8 @@ private:
                 | vk::ColorComponentFlagBits::eA
         };
         std::array<float, 4uz> blend_constants = { 0.0f, 0.0f, 0.0f, 0.0f }; // RGBA
-        vk::PipelineColorBlendStateCreateInfo colorBlendStateInfo {
+        vk::PipelineColorBlendStateCreateInfo color_blend_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .logicOpEnable = vk::False,
             .logicOp = vk::LogicOp::eCopy,
@@ -1148,17 +1157,19 @@ private:
             .blendConstants = blend_constants
         };
 
-        std::vector<vk::DynamicState> dynamic_states = {
+        std::array<vk::DynamicState, 2uz> dynamic_states = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
         vk::PipelineDynamicStateCreateInfo dynamic_state_ci {
+            .pNext = nullptr,
             .flags = {},
             .dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size()),
             .pDynamicStates = dynamic_states.data()
         };
 
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .pNext = nullptr,
             .flags = {},
             .setLayoutCount = 1u,
             .pSetLayouts = &descriptor_set_layout,
@@ -1172,9 +1183,11 @@ private:
             minilog::log_fatal("Failed to create vk::PipelineLayout!");
         }
 
+        // Create graphic pipeline
         vk::GraphicsPipelineCreateInfo graphics_pipeline_ci {
+            .pNext = nullptr,
             .flags = {},
-            .stageCount = 2u,
+            .stageCount = static_cast<std::uint32_t>(pipeline_shader_stage_cis.size()),
             .pStages = pipeline_shader_stage_cis.data(),
             .pVertexInputState = &vertex_input_state_ci,
             .pInputAssemblyState = &input_assembly_state_ci,
@@ -1183,7 +1196,7 @@ private:
             .pRasterizationState = &rasterization_state_ci,
             .pMultisampleState = &multisample_state_ci,
             .pDepthStencilState = &depth_stencil_state_ci,
-            .pColorBlendState = &colorBlendStateInfo,
+            .pColorBlendState = &color_blend_state_ci,
             .pDynamicState = &dynamic_state_ci,
             .layout = render_pipeline_layout,
             .renderPass = render_pass,
@@ -1193,7 +1206,7 @@ private:
         };
         if (
             vk::Result result = logical_device.createGraphicsPipelines(
-                nullptr, 1, &graphics_pipeline_ci, nullptr, &render_pipeline
+                nullptr, 1u, &graphics_pipeline_ci, nullptr, &render_pipeline
             );
             result != vk::Result::eSuccess
         ) {
@@ -1205,7 +1218,7 @@ private:
     }
 
     void create_descriptor_pool() {
-        std::array<vk::DescriptorPoolSize, 2uz> descriptro_pool_size = {
+        std::array<vk::DescriptorPoolSize, 2uz> descriptor_pool_size = {
             vk::DescriptorPoolSize {
                 .type = vk::DescriptorType::eUniformBuffer,
                 .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT)
@@ -1216,10 +1229,11 @@ private:
             }
         };
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
+            .pNext = nullptr,
             .flags = {},
             .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT),
-            .poolSizeCount = static_cast<std::uint32_t>(descriptro_pool_size.size()),
-            .pPoolSizes = descriptro_pool_size.data()
+            .poolSizeCount = static_cast<std::uint32_t>(descriptor_pool_size.size()),
+            .pPoolSizes = descriptor_pool_size.data()
         };
         if (
             vk::Result result = logical_device.createDescriptorPool(&descriptor_pool_ci, nullptr, &descriptor_pool);
@@ -1231,11 +1245,14 @@ private:
 
     void create_descriptor_sets() {
         descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
-        std::vector<vk::DescriptorSetLayout>
-        descriptor_set_layouts(MAX_FRAMES_IN_FLIGHT, descriptor_set_layout);
+        std::vector<vk::DescriptorSetLayout> descriptor_set_layouts(
+            MAX_FRAMES_IN_FLIGHT,
+            descriptor_set_layout
+        );
         vk::DescriptorSetAllocateInfo descriptor_set_ai {
+            .pNext = nullptr,
             .descriptorPool = descriptor_pool,
-            .descriptorSetCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT),
+            .descriptorSetCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
             .pSetLayouts = descriptor_set_layouts.data()
         };
         if (
@@ -1251,15 +1268,14 @@ private:
                 .offset = 0u,
                 .range = sizeof(ProjectionTransformation)
             };
-
             vk::DescriptorImageInfo descriptor_image_info {
                 .sampler = texture_sampler,
                 .imageView = texture_imageview,
                 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
             };
-
             std::array<vk::WriteDescriptorSet, 2uz> write_descriptor_sets = {
                 vk::WriteDescriptorSet {
+                    .pNext = nullptr,
                     .dstSet = descriptor_sets[i],
                     .dstBinding = 0u,
                     .dstArrayElement = 0u,
@@ -1267,9 +1283,10 @@ private:
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
                     .pImageInfo = nullptr,
                     .pBufferInfo = &descriptor_buffer_info,
-                    .pTexelBufferView = nullptr,
+                    .pTexelBufferView = nullptr
                 },
                 vk::WriteDescriptorSet {
+                    .pNext = nullptr,
                     .dstSet = descriptor_sets[i],
                     .dstBinding = 1u,
                     .dstArrayElement = 0u,
@@ -1277,7 +1294,7 @@ private:
                     .descriptorType = vk::DescriptorType::eCombinedImageSampler,
                     .pImageInfo = &descriptor_image_info,
                     .pBufferInfo = nullptr,
-                    .pTexelBufferView = nullptr,
+                    .pTexelBufferView = nullptr
                 }
             };
             logical_device.updateDescriptorSets(
@@ -1294,8 +1311,14 @@ private:
         render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
         in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
-        vk::SemaphoreCreateInfo semaphore_ci {};
-        vk::FenceCreateInfo fence_ci { .flags = vk::FenceCreateFlagBits::eSignaled };
+        vk::SemaphoreCreateInfo semaphore_ci {
+            .pNext = nullptr,
+            .flags = {}
+        };
+        vk::FenceCreateInfo fence_ci {
+            .pNext = nullptr,
+            .flags = vk::FenceCreateFlagBits::eSignaled
+        };
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             if (
                 logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
