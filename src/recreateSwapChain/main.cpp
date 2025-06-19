@@ -80,9 +80,10 @@ debug_callback(
     return vk::False;
 }
 
+
 std::vector<char> read_shader_file(const std::string& fileName) {
     std::ifstream file(fileName, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) { minilog::log_fatal("failed to open file: {}", fileName); }
+    if (!file.is_open()) { minilog::log_fatal("Failed to open file: {}", fileName); }
 
     std::size_t file_size = static_cast<std::size_t>(file.tellg());
     std::vector<char> buffer(file_size);
@@ -318,7 +319,7 @@ private:
     void check_validation_layer_support() {
         std::vector<vk::LayerProperties> available_layers = vk::enumerateInstanceLayerProperties();
         for (const char* layer_name : VALIDATION_LAYERS) {
-            for (const vk::LayerProperties& layer_properties : available_layers) {
+            for (const auto& layer_properties : available_layers) {
                 if (strcmp(layer_name, layer_properties.layerName) == 0) {
                     validation_layers_supported = true;
                     minilog::log_debug("the {} is supported!", layer_name);
@@ -353,6 +354,7 @@ private:
 
         auto instance_extensions = get_required_extensions();
         vk::InstanceCreateInfo instance_ci {
+            .pNext = nullptr,
             .flags = {},
             .pApplicationInfo = &application_info,
             .enabledLayerCount = 0u,
@@ -363,31 +365,25 @@ private:
         if (ENABLE_VALIDATION_LAYER) {
             instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
             instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
+
+            vk::DebugUtilsMessengerCreateInfoEXT
+            debug_utils_messenger_ci = create_debug_messenger_ci();
+            instance_ci.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*)&debug_utils_messenger_ci;
         }
 
         if (
             vk::Result result = vk::createInstance(&instance_ci, nullptr, &instance);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Instance!");
+            minilog::log_fatal("Failed to create vk::Instance!");
         }
     }
 
     void setup_debug_messenger() {
         if (!ENABLE_VALIDATION_LAYER) { return ; }
 
-        vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
-            .flags = vk::DebugUtilsMessengerCreateFlagsEXT{},
-            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
-                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
-                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
-                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
-                | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
-                | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-            .pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debug_callback),
-            .pUserData = nullptr
-        };
+        vk::DebugUtilsMessengerCreateInfoEXT
+        debug_utils_messenger_ci = create_debug_messenger_ci();
 
         vk::detail::DynamicLoader dynamic_loader;
         PFN_vkGetInstanceProcAddr
@@ -400,27 +396,25 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to set up debug messenger!");
+            minilog::log_fatal("Failed to set up debug messenger!");
         }
     }
 
     void create_surface() {
+        VkSurfaceKHR _surface;
         if (
-            VkResult result = glfwCreateWindowSurface(
-                static_cast<VkInstance>(instance),
-                glfw_window,
-                nullptr,
-                reinterpret_cast<VkSurfaceKHR*>(&surface)
-            );
-            result != VK_SUCCESS
+            VkResult result = glfwCreateWindowSurface(instance, glfw_window, nullptr, &_surface);
+            result == VK_SUCCESS
         ) {
-            minilog::log_fatal("failed to create vk::SurfaceKHR!");
+            surface = vk::SurfaceKHR(_surface);
+        } else {
+            minilog::log_fatal("Failed to create vk::SurfaceKHR!");
         }
     }
 
     void pick_physical_device() {
         std::vector<vk::PhysicalDevice> physical_devices = instance.enumeratePhysicalDevices();
-        for (const vk::PhysicalDevice& device : physical_devices) {
+        for (const auto& device : physical_devices) {
             if (is_physical_device_suitable(device)) {
                 physical_device = device;
                 msaa_samples = get_max_usable_sample_count();
@@ -428,7 +422,7 @@ private:
             }
         }
 
-        if (!physical_device) { minilog::log_fatal("failed to find a suitable GPU!"); }
+        if (!physical_device) { minilog::log_fatal("Failed to find a suitable physical GPU!"); }
     }
 
     void create_logical_device() {
@@ -471,7 +465,7 @@ private:
             vk::Result result = physical_device.createDevice(&device_ci, nullptr, &logical_device);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create logical device!");
+            minilog::log_fatal("Failed to create logical device!");
         }
 
         logical_device.getQueue(queue_family_index.graphic.value(), 0u, &graphics_queue);
@@ -489,7 +483,7 @@ private:
             vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::CommandPool!");
+            minilog::log_fatal("Failed to create vk::CommandPool!");
         }
     }
 
@@ -504,12 +498,12 @@ private:
             vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data());
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to allocate command buffers!");
+            minilog::log_fatal("Failed to allocate command buffers!");
         }
     }
 
     void create_swapchain() {
-        SwapChainSupportDetail swapchain_support_detail = query_swapchain_support(physical_device);
+        SwapChainSupportDetail swapchain_support_detail = query_swapchain_support_detail(physical_device);
         vk::SurfaceFormatKHR surface_format = choose_swapchain_surface_format(swapchain_support_detail.surface_formats);
         vk::PresentModeKHR present_mode = choose_swapchain_present_mode(swapchain_support_detail.present_modes);
         vk::Extent2D extent = choose_swapchain_extent(swapchain_support_detail.surface_capabilities);
@@ -555,7 +549,7 @@ private:
             vk::Result result = logical_device.createSwapchainKHR(&swapchain_ci, nullptr, &swapchain);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::SwapchainCreateInfoKHR!");
+            minilog::log_fatal("Failed to create vk::SwapchainCreateInfoKHR!");
         }
 
         swapchain_images = logical_device.getSwapchainImagesKHR(swapchain);
@@ -641,7 +635,7 @@ private:
                 vk::Result result = logical_device.createFramebuffer(&frame_buffer_ci, nullptr, &swapchain_frame_buffers[i]);
                 result != vk::Result::eSuccess
             ) {
-                minilog::log_fatal("failed to create vk::Framebuffer!");
+                minilog::log_fatal("Failed to create vk::Framebuffer!");
             }
         }
     }
@@ -651,7 +645,7 @@ private:
         int tex_height { 0 };
         int tex_channels { 0 };
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
-        if (!pixels) { throw std::runtime_error("failed to load texture image!"); }
+        if (!pixels) { throw std::runtime_error("Failed to load texture image!"); }
 
         vk::DeviceSize image_device_size = tex_width * tex_height * 4u;
         mip_levels = static_cast<std::uint32_t>(std::floor(std::log2(std::max(tex_width, tex_height)))) + 1u;
@@ -748,7 +742,7 @@ private:
             vk::Result result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Sampler!");
+            minilog::log_fatal("Failed to create vk::Sampler!");
         }
     }
 
@@ -960,7 +954,7 @@ private:
             vk::Result result = logical_device.createRenderPass(&render_pass_ci, nullptr, &render_pass);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::RenderPass!");
+            minilog::log_fatal("Failed to create vk::RenderPass!");
         }
     }
 
@@ -997,7 +991,7 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::DescriptorSetLayout!");
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
         }
     }
 
@@ -1172,7 +1166,7 @@ private:
             vk::Result result = logical_device.createPipelineLayout(&pipeline_layout_ci, nullptr, &render_pipeline_layout);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::PipelineLayout!");
+            minilog::log_fatal("Failed to create vk::PipelineLayout!");
         }
 
         vk::GraphicsPipelineCreateInfo graphics_pipeline_ci {
@@ -1200,7 +1194,7 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Pipeline!");
+            minilog::log_fatal("Failed to create vk::Pipeline!");
         }
 
         logical_device.destroyShaderModule(vert_shader_module, nullptr);
@@ -1228,7 +1222,7 @@ private:
             vk::Result result = logical_device.createDescriptorPool(&descriptor_pool_ci, nullptr, &descriptor_pool);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::DescriptorPool!");
+            minilog::log_fatal("Failed to create vk::DescriptorPool!");
         }
     }
 
@@ -1245,7 +1239,7 @@ private:
             vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, descriptor_sets.data());
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::DescriptorSet!");
+            minilog::log_fatal("Failed to create vk::DescriptorSet!");
         }
 
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -1326,7 +1320,7 @@ private:
             vk::Result result = commandBuffer.begin(&command_buffer_begin_info); // begin
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to begin recording command buffer!");
+            minilog::log_fatal("Failed to begin recording command buffer!");
         }
 
         vk::Rect2D render_area {
@@ -1393,7 +1387,7 @@ private:
             recreate_swapchain();
             return ;
         } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-            minilog::log_fatal("failed to acquire swap chain image!");
+            minilog::log_fatal("Failed to acquire swap chain image!");
         }
 
         // update_uniform_buffer(current_frame); // TODO
@@ -1424,7 +1418,7 @@ private:
             vk::Result result = graphics_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to submit draw command buffer!");
+            minilog::log_fatal("Failed to submit draw command buffer!");
         }
 
         vk::SwapchainKHR swap_chains[] = { swapchain };
@@ -1445,7 +1439,7 @@ private:
             framebuffer_resized = false;
             recreate_swapchain();
         } else if (result != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to present swap chain image!");
+            minilog::log_fatal("Failed to present swap chain image!");
         }
 
         current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
@@ -1464,7 +1458,7 @@ private:
                 || logical_device.createSemaphore(&semaphore_ci, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
                 || logical_device.createFence(&fence_ci, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
             ) {
-                minilog::log_fatal("failed to create synchronization objects for a frame!");
+                minilog::log_fatal("Failed to create synchronization objects for a frame!");
             }
         }
     }
@@ -1480,8 +1474,9 @@ private:
                 queue_family_index.graphic = i;
             }
 
-            vk::Bool32 is_present_support = physicalDevice.getSurfaceSupportKHR(i, surface);
-            if (is_present_support) { queue_family_index.present = i; }
+            if (physicalDevice.getSurfaceSupportKHR(i, surface)) {
+                queue_family_index.present = i;
+            }
 
             if (queue_family_index.has_value()) { break; }
             ++i;
@@ -1490,12 +1485,12 @@ private:
         return queue_family_index;
     }
 
-    SwapChainSupportDetail query_swapchain_support(vk::PhysicalDevice physicalDevice) {
-        SwapChainSupportDetail swapchain_support_detail {};
-        swapchain_support_detail.surface_capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
-
-        swapchain_support_detail.surface_formats = physicalDevice.getSurfaceFormatsKHR(surface);
-        swapchain_support_detail.present_modes = physicalDevice.getSurfacePresentModesKHR(surface);
+    SwapChainSupportDetail query_swapchain_support_detail(vk::PhysicalDevice physicalDevice) {
+        SwapChainSupportDetail swapchain_support_detail {
+            .surface_capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
+            .surface_formats = physicalDevice.getSurfaceFormatsKHR(surface);
+            .present_modes = physicalDevice.getSurfacePresentModesKHR(surface);
+        };
 
         return swapchain_support_detail;
     }
@@ -1553,9 +1548,12 @@ private:
     }
 
     std::vector<const char*> get_required_extensions() {
-        std::uint32_t glfw_extension_count { 0u };
-        const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-        std::vector<const char*> instance_extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
+        std::uint32_t glfw_required_instance_count { 0u };
+        const char** glfw_required_instance_ext = glfwGetRequiredInstanceExtensions(&glfw_required_instance_count);
+        std::vector<const char*> instance_extensions(
+            glfw_required_instance_ext,
+            glfw_required_instance_ext + glfw_required_instance_count
+        );
         if (ENABLE_VALIDATION_LAYER) { instance_extensions.push_back(vk::EXTDebugUtilsExtensionName); }
 
         return instance_extensions;
@@ -1571,30 +1569,26 @@ private:
     }
 
     bool is_physical_device_suitable(vk::PhysicalDevice physicalDevice) {
-        QueueFamilyIndex queue_family_index = find_queue_families(physicalDevice);
-        bool extensions_supported = check_physical_device_extension_support(physicalDevice);
-
         bool swapchain_adequate { false };
+        bool extensions_supported = check_physical_device_extension_support(physicalDevice);
         if (extensions_supported) {
-            SwapChainSupportDetail detail = query_swapchain_support(physicalDevice);
+            SwapChainSupportDetail detail = query_swapchain_support_detail(physicalDevice);
             swapchain_adequate = (!detail.surface_formats.empty()) && (!detail.present_modes.empty());
         }
 
-        vk::PhysicalDeviceFeatures supportedFeatures = physicalDevice.getFeatures();
+        QueueFamilyIndex queue_family_index = find_queue_families(physicalDevice);
+        vk::PhysicalDeviceFeatures features = physicalDevice.getFeatures();
 
         return queue_family_index.has_value()
             && extensions_supported
             && swapchain_adequate
-            && supportedFeatures.samplerAnisotropy; // specifies whether anisotropic filtering is supported
+            && features.samplerAnisotropy;
     }
 
     vk::SampleCountFlagBits get_max_usable_sample_count() {
-        vk::PhysicalDeviceProperties
-        physical_device_properties = physical_device.getProperties();
-
-        vk::SampleCountFlags
-        sample_counts = physical_device_properties.limits.framebufferColorSampleCounts
-            & physical_device_properties.limits.framebufferDepthSampleCounts;
+        vk::PhysicalDeviceProperties properties = physical_device.getProperties();
+        vk::SampleCountFlags sample_counts = properties.limits.framebufferColorSampleCounts
+            & properties.limits.framebufferDepthSampleCounts;
         if (sample_counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
         if (sample_counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
         if (sample_counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
@@ -1630,7 +1624,7 @@ private:
             vk::Result result = logical_device.createImageView(&imageview_info, nullptr, &imageview);
             result != vk::Result::eSuccess
         ) {
-            throw std::runtime_error("failed to create image view!");
+            throw std::runtime_error("Failed to create image view!");
         }
 
         return imageview;
@@ -1656,7 +1650,7 @@ private:
             }
         }
 
-        throw std::runtime_error("failed to find supported vk::Format!");
+        throw std::runtime_error("Failed to find supported vk::Format!");
     }
 
     vk::Format find_depth_format() {
@@ -1683,7 +1677,7 @@ private:
             vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::ShaderModule");
+            minilog::log_fatal("Failed to create vk::ShaderModule");
         }
 
         return shader_module;
@@ -1724,7 +1718,7 @@ private:
             vk::Result result = logical_device.createImage(&image_ci, nullptr, &image);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Image!");
+            minilog::log_fatal("Failed to create vk::Image!");
         }
 
         vk::MemoryRequirements memory_requirement = logical_device.getImageMemoryRequirements(image);
@@ -1736,7 +1730,7 @@ private:
             vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &imageMemory);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to allocate vk::ImageMemory!");
+            minilog::log_fatal("Failed to allocate vk::ImageMemory!");
         }
 
         logical_device.bindImageMemory(image, imageMemory, 0u);
@@ -1757,7 +1751,7 @@ private:
             }
         }
 
-        throw std::runtime_error("failed to find suitable memory type!");
+        throw std::runtime_error("Failed to find suitable memory type!");
     }
 
     void create_buffer(
@@ -1779,7 +1773,7 @@ private:
             vk::Result result = logical_device.createBuffer(&buffer_ci, nullptr, &buffer);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Buffer!");
+            minilog::log_fatal("Failed to create vk::Buffer!");
         }
 
         vk::MemoryRequirements memory_requirement = logical_device.getBufferMemoryRequirements(buffer);
@@ -1791,7 +1785,7 @@ private:
             vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to allocate vk::BufferMemory!");
+            minilog::log_fatal("Failed to allocate vk::BufferMemory!");
         }
 
         logical_device.bindBufferMemory(buffer, bufferMemory, 0u);
@@ -2064,6 +2058,23 @@ private:
         command_buffer.copyBuffer(srcBuffer, dstBuffer, 1u, &buffer_copy);
 
         end_single_time_commands(command_buffer);
+    }
+
+    vk::DebugUtilsMessengerCreateInfoEXT create_debug_messenger_ci() {
+        vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
+            .flags = vk::DebugUtilsMessengerCreateFlagsEXT{},
+            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+                | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
+                | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+                | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+            .pfnUserCallback = reinterpret_cast<vk::PFN_DebugUtilsMessengerCallbackEXT>(debug_callback),
+            .pUserData = nullptr
+        };
+
+        return debug_utils_messenger_ci;
     }
 };
 
