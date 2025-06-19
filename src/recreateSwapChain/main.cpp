@@ -362,12 +362,11 @@ private:
             .ppEnabledExtensionNames = instance_extensions.data()
         };
         if (ENABLE_VALIDATION_LAYER) {
-            instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
-            instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
-
             vk::DebugUtilsMessengerCreateInfoEXT
             debug_utils_messenger_ci = create_debug_messenger_ci();
             instance_ci.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*)&debug_utils_messenger_ci;
+            instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
+            instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
         }
 
         if (
