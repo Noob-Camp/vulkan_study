@@ -1330,6 +1330,90 @@ private:
         }
     }
 
+    void draw_frame() {
+        if (
+            vk::Result result = logical_device.waitForFences(
+                1u, &in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max();
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("waitForFences failed!");
+        }
+
+        std::uint32_t image_index { 0u };
+        if (
+            vk::Result result = logical_device.acquireNextImageKHR(
+                swapchain,
+                std::numeric_limits<std::uint64_t>::max(),
+                image_available_semaphores[current_frame],
+                nullptr,
+                &image_index
+            );
+            result == vk::Result::eErrorOutOfDateKHR
+        ) {
+            recreate_swapchain();
+            return ;
+        } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+            minilog::log_fatal("Failed to acquire swap chain image!");
+        }
+
+        update_uniform_buffer(current_frame);
+
+        if (
+            vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("resetFences failed!");
+        }
+
+        command_buffers[current_frame].reset({});
+        record_command_buffer(command_buffers[current_frame], image_index);
+
+        vk::Semaphore wait_semaphores[] = { image_available_semaphores[current_frame] };
+        vk::PipelineStageFlags wait_stages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+        vk::Semaphore signal_semaphores[] = { render_finished_semaphores[current_frame] };
+        vk::SubmitInfo submitInfo {
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1u,
+            .pWaitSemaphores = wait_semaphores,
+            .pWaitDstStageMask = wait_stages,
+            .commandBufferCount = 1u,
+            .pCommandBuffers = &command_buffers[current_frame],
+            .signalSemaphoreCount = 1u,
+            .pSignalSemaphores = signal_semaphores
+        };
+        if (
+            vk::Result result = graphic_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to submit draw command buffer!");
+        }
+
+        vk::SwapchainKHR swap_chains[] = { swapchain };
+        vk::PresentInfoKHR present_info {
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1u,
+            .pWaitSemaphores = signal_semaphores,
+            .swapchainCount = 1u,
+            .pSwapchains = swap_chains,
+            .pImageIndices = &image_index,
+            .pResults = nullptr
+        };
+        if (
+            vk::Result result = present_queue.presentKHR(&present_info);
+            result == vk::Result::eErrorOutOfDateKHR
+                || result == vk::Result::eSuboptimalKHR
+                || framebuffer_resized
+        ) {
+            framebuffer_resized = false;
+            recreate_swapchain();
+        } else if (result != vk::Result::eSuccess) {
+            minilog::log_fatal("Failed to present swap chain image!");
+        }
+
+        current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
+    }
+
     void cleanup_swapchain() {
         for (auto framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
         for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
@@ -1357,11 +1441,12 @@ private:
 
     void record_command_buffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex) {
         vk::CommandBufferBeginInfo command_buffer_begin_info {
+            .pNext = nullptr,
             .flags = {},
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = commandBuffer.begin(&command_buffer_begin_info); // begin
+            vk::Result result = commandBuffer.begin(&command_buffer_begin_info); // command buffer begin
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to begin recording command buffer!");
@@ -1371,15 +1456,19 @@ private:
             .offset { .x = 0, .y = 0 },
             .extent = swapchain_extent
         };
-        vk::ClearValue clear_color { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } };
+        std::array<vk::ClearValue, 2uz> clear_values = {
+            vk::ClearValue { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } },
+            vk::ClearValue { .depthStencil { .depth = 1.0f, .stencil = 0u }
+        }
         vk::RenderPassBeginInfo render_pass_begin_info {
+            .pNext = nullptr,
             .renderPass = render_pass,
             .framebuffer = frame_buffers[imageIndex],
             .renderArea = render_area,
-            .clearValueCount = 1u,
-            .pClearValues = &clear_color
+            .clearValueCount = static_cast<std::uint32_t>(clear_values.size()),
+            .pClearValues = clear_values.data()
         };
-        commandBuffer.beginRenderPass(&render_pass_begin_info, vk::SubpassContents::eInline); // begin
+        commandBuffer.beginRenderPass(&render_pass_begin_info, vk::SubpassContents::eInline); // render pass begin
         vk::Viewport viewport {
             .x = 0.0f,
             .y = 0.0f,
@@ -1409,84 +1498,14 @@ private:
             nullptr
         );
         commandBuffer.drawIndexed(static_cast<std::uint32_t>(indices.size()), 1u, 0u, 0u, 0u);
-        commandBuffer.endRenderPass(); // end
-        commandBuffer.end(); // end
-    }
+        commandBuffer.endRenderPass(); // render pass end
 
-    void draw_frame() {
         if (
-            vk::Result result = logical_device.waitForFences(1u, &in_flight_fences[current_frame], vk::True, UINT64_MAX);
+            vk::Result result = commandBuffer.end(); // command buffer end
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("waitForFences failed!");
+            minilog::log_fatal("Failed to record command buffer!");
         }
-
-        std::uint32_t image_index { 0u };
-        if (
-            vk::Result result = logical_device.acquireNextImageKHR(
-                swapchain, UINT64_MAX, image_available_semaphores[current_frame], nullptr, &image_index
-            );
-            result == vk::Result::eErrorOutOfDateKHR
-        ) {
-            recreate_swapchain();
-            return ;
-        } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-            minilog::log_fatal("Failed to acquire swap chain image!");
-        }
-
-        // update_uniform_buffer(current_frame); // TODO
-
-        if (
-            vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_debug("resetFences failed!");
-        }
-
-        command_buffers[current_frame].reset({});
-        record_command_buffer(command_buffers[current_frame], image_index);
-
-        vk::Semaphore wait_semaphores[] = { image_available_semaphores[current_frame] };
-        vk::PipelineStageFlags wait_stages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-        vk::Semaphore signal_semaphores[] = { render_finished_semaphores[current_frame] };
-        vk::SubmitInfo submitInfo {
-            .waitSemaphoreCount = 1u,
-            .pWaitSemaphores = wait_semaphores,
-            .pWaitDstStageMask = wait_stages,
-            .commandBufferCount = 1u,
-            .pCommandBuffers = &command_buffers[current_frame],
-            .signalSemaphoreCount = 1u,
-            .pSignalSemaphores = signal_semaphores
-        };
-        if (
-            vk::Result result = graphic_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to submit draw command buffer!");
-        }
-
-        vk::SwapchainKHR swap_chains[] = { swapchain };
-        vk::PresentInfoKHR present_info {
-            .waitSemaphoreCount = 1u,
-            .pWaitSemaphores = signal_semaphores,
-            .swapchainCount = 1u,
-            .pSwapchains = swap_chains,
-            .pImageIndices = &image_index,
-            .pResults = nullptr
-        };
-        if (
-            vk::Result result = present_queue.presentKHR(&present_info);
-            result == vk::Result::eErrorOutOfDateKHR
-                || result == vk::Result::eSuboptimalKHR
-                || framebuffer_resized
-        ) {
-            framebuffer_resized = false;
-            recreate_swapchain();
-        } else if (result != vk::Result::eSuccess) {
-            minilog::log_fatal("Failed to present swap chain image!");
-        }
-
-        current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
     }
 
     QueueFamilyIndex find_queue_families(vk::PhysicalDevice physicalDevice) {
@@ -2106,6 +2125,36 @@ private:
         };
 
         return debug_utils_messenger_ci;
+    }
+
+    void update_uniform_buffer(std::uint32_t currentImage) {
+        static auto start_time = std::chrono::high_resolution_clock::now();
+
+        auto current_time = std::chrono::high_resolution_clock::now();
+        auto time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+        ProjectionTransformation ubo {
+            .model = glm::rotate(
+                glm::mat4(1.0f),
+                time * glm::radians(90.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            ),
+            .view = glm::lookAt(
+                glm::vec3(2.0f, 2.0f, 2.0f),
+                glm::vec3(0.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            ),
+            .proj = glm::perspective(
+                glm::radians(45.0f),
+                static_cast<float>(swapChainExtent.width)
+                    / static_cast<float>(swapChainExtent.height),
+                0.1f,
+                10.0f
+            )
+        };
+        ubo.proj[1][1] *= -1.0f;
+
+        memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
     }
 };
 
