@@ -18,19 +18,18 @@
 
 #include <minilog.hpp>
 
+#include <cstdint>
 #include <stdexcept>
-#include <iostream>
 #include <fstream>
 #include <algorithm>
 #include <vector>
 #include <string>
 #include <cstring>
 #include <cstdlib>
-#include <cstdint>
 #include <limits>
 #include <optional>
 #include <set>
-#include <stddef.h> // offsetof
+#include <cstddef> // offsetof
 
 #ifdef NDEBUG
     constexpr bool ENABLE_VALIDATION_LAYER { false };
@@ -2166,7 +2165,7 @@ int main() {
     try {
         application.run();
     } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        minilog::log_fatal("{}", e.what());
         return EXIT_FAILURE;
     }
 
