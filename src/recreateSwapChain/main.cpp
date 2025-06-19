@@ -106,7 +106,7 @@ struct Vertex {
 };
 namespace std {
 template<> struct hash<Vertex> {
-    std::size_t operator()(Vertex const& vertex) const {
+    std::size_t operator()(const Vertex& vertex) const {
         auto x = hash<glm::vec3>()(vertex.position);
         auto y = hash<glm::vec3>()(vertex.color) << 1;
         auto z = hash<glm::vec2>()(vertex.uv) << 1;
@@ -142,7 +142,7 @@ class Application {
 private:
     std::uint32_t width { 800u };
     std::uint32_t height { 600u };
-    std::string window_name { "reCreate the Swap Chain"s };
+    std::string window_name { "Recreate the Swap Chain"s };
     GLFWwindow* glfw_window { nullptr };
 
     vk::Instance instance;
