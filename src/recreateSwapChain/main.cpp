@@ -154,8 +154,11 @@ private:
     vk::SampleCountFlagBits msaa_samples { vk::SampleCountFlagBits::e1 };
 
     vk::Device logical_device;
-    vk::Queue graphics_queue;
+    vk::Queue graphic_queue;
     vk::Queue present_queue;
+
+    vk::CommandPool command_pool;
+    std::vector<vk::CommandBuffer> command_buffers;
 
     vk::SurfaceKHR surface;
     vk::SwapchainKHR swapchain;
@@ -163,7 +166,7 @@ private:
     vk::Extent2D swapchain_extent;
     std::vector<vk::Image> swapchain_images;
     std::vector<vk::ImageView> swapchain_imageviews;
-    std::vector<vk::Framebuffer> swapchain_frame_buffers;
+    std::vector<vk::Framebuffer> frame_buffers;
 
     vk::Image color_image;
     vk::DeviceMemory color_device_memory;
@@ -195,9 +198,6 @@ private:
 
     vk::DescriptorPool descriptor_pool;
     std::vector<vk::DescriptorSet> descriptor_sets;
-
-    vk::CommandPool command_pool;
-    std::vector<vk::CommandBuffer> command_buffers;
 
     std::vector<vk::Semaphore> image_available_semaphores;
     std::vector<vk::Semaphore> render_finished_semaphores;
@@ -284,19 +284,18 @@ private:
         allocate_command_buffers();
 
         create_swapchain();
-        create_imageviews();
-
+        create_swapchain_imageviews();
         create_color_resource();
         create_depth_resource();
         create_frame_buffers();
-        create_texture_image();
-        create_texture_imageview();
-        create_texutre_sampler();
 
         load_obj_model();
         create_vertex_buffer();
         create_index_buffer();
         create_uniform_buffers();
+        create_texture_image();
+        create_texture_imageview();
+        create_texutre_sampler();
 
         create_render_pass();
         create_descriptor_set_layout();
@@ -432,26 +431,27 @@ private:
             queue_family_index.present.value()
         };
 
-        float queuePriority { 1.0f }; // default
+        float queue_priority { 1.0f }; // default
         std::vector<vk::DeviceQueueCreateInfo> device_queue_cis;
         for (std::uint32_t queue_family : unique_queue_families) {
             vk::DeviceQueueCreateInfo device_queue_ci {
                 .queueFamilyIndex = queue_family,
                 .queueCount = 1u,
-                .pQueuePriorities = &queuePriority
+                .pQueuePriorities = &queue_priority
             };
             device_queue_cis.push_back(device_queue_ci);
         }
 
-        vk::PhysicalDeviceFeatures physical_device_features {};
-        physical_device_features.samplerAnisotropy = vk::True;
-
+        vk::PhysicalDeviceFeatures physical_device_features {
+            .samplerAnisotropy = vk::True
+        };
         vk::DeviceCreateInfo device_ci {
+            .pNext = nullptr,
             .flags = {}, // flags is reserved for future use
             .queueCreateInfoCount = static_cast<std::uint32_t>(device_queue_cis.size()),
             .pQueueCreateInfos = device_queue_cis.data(),
-            .enabledLayerCount = 0u,
-            .ppEnabledLayerNames = nullptr,
+            .enabledLayerCount = 0u, // deprecated
+            .ppEnabledLayerNames = nullptr, // deprecated
             .enabledExtensionCount = static_cast<std::uint32_t>(DEVICE_EXTENSIONS.size()),
             .ppEnabledExtensionNames = DEVICE_EXTENSIONS.data(),
             .pEnabledFeatures = &physical_device_features
@@ -468,7 +468,7 @@ private:
             minilog::log_fatal("Failed to create logical device!");
         }
 
-        logical_device.getQueue(queue_family_index.graphic.value(), 0u, &graphics_queue);
+        logical_device.getQueue(queue_family_index.graphic.value(), 0u, &graphic_queue);
         logical_device.getQueue(queue_family_index.present.value(), 0u, &present_queue);
     }
 
@@ -476,6 +476,7 @@ private:
         QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
 
         vk::CommandPoolCreateInfo command_pool_ci {
+            .pNext = nullptr,
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
             .queueFamilyIndex = queue_family_index.graphic.value()
         };
@@ -490,6 +491,7 @@ private:
     void allocate_command_buffers() {
         command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo allocInfo {
+            .pNext = nullptr,
             .commandPool = command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = static_cast<std::uint32_t>(command_buffers.size())
@@ -508,15 +510,14 @@ private:
         vk::PresentModeKHR present_mode = choose_swapchain_present_mode(swapchain_support_detail.present_modes);
         vk::Extent2D extent = choose_swapchain_extent(swapchain_support_detail.surface_capabilities);
 
-        std::uint32_t image_count = swapchain_support_detail.surface_capabilities.minImageCount + 1u; // realization of triple buffer
-        if (
-            (swapchain_support_detail.surface_capabilities.maxImageCount > 0u)
-            && (image_count > swapchain_support_detail.surface_capabilities.maxImageCount)
-        ) {
-            image_count = swapchain_support_detail.surface_capabilities.maxImageCount;
-        }
+        // realization of triple buffer
+        std::uint32_t image_count = std::min(
+            swapchain_support_detail.surface_capabilities.minImageCount + 1u,
+            swapchain_support_detail.surface_capabilities.maxImageCount
+        );
 
         vk::SwapchainCreateInfoKHR swapchain_ci {
+            .pNext = nullptr,
             .flags = {},
             .surface = surface,
             .minImageCount = image_count,
@@ -534,14 +535,14 @@ private:
             .clipped = vk::True,
             .oldSwapchain = nullptr
         };
-        QueueFamilyIndex indices = find_queue_families(physical_device);
+        QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
         std::array<std::uint32_t, 2uz> queue_family_indices {
-            indices.graphic.value(),
-            indices.present.value()
+            queue_family_index.graphic.value(),
+            queue_family_index.present.value()
         };
-        if (indices.graphic != indices.present) {
+        if (queue_family_index.graphic != queue_family_index.present) {
             swapchain_ci.imageSharingMode = vk::SharingMode::eConcurrent;
-            swapchain_ci.queueFamilyIndexCount = 2;
+            swapchain_ci.queueFamilyIndexCount = 2u;
             swapchain_ci.pQueueFamilyIndices = queue_family_indices.data();
         }
 
@@ -557,7 +558,7 @@ private:
         swapchain_extent = swapchain_ci.imageExtent;
     }
 
-    void create_imageviews() {
+    void create_swapchain_imageviews() {
         swapchain_imageviews.resize(swapchain_images.size());
         for (std::size_t i { 0uz }; i < swapchain_images.size(); ++i) {
             swapchain_imageviews[i] = create_imageview(
@@ -579,7 +580,7 @@ private:
             color_format,
             vk::ImageTiling::eOptimal,
             vk::ImageUsageFlagBits::eColorAttachment
-            | vk::ImageUsageFlagBits::eDepthStencilAttachment,
+            | vk::ImageUsageFlagBits::eTransientAttachment,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             color_image,
             color_device_memory
@@ -615,7 +616,7 @@ private:
     }
 
     void create_frame_buffers() {
-        swapchain_frame_buffers.resize(swapchain_imageviews.size());
+        frame_buffers.resize(swapchain_imageviews.size());
         for (std::size_t i { 0uz }; i < swapchain_imageviews.size(); ++i) {
             std::array<vk::ImageView, 3uz> imageviews = {
                 color_imageview,
@@ -623,6 +624,7 @@ private:
                 swapchain_imageviews[i]
             };
             vk::FramebufferCreateInfo frame_buffer_ci {
+                .pNext = nullptr,
                 .flags = {},
                 .renderPass = render_pass,
                 .attachmentCount = static_cast<std::uint32_t>(imageviews.size()),
@@ -632,7 +634,7 @@ private:
                 .layers = 1u
             };
             if (
-                vk::Result result = logical_device.createFramebuffer(&frame_buffer_ci, nullptr, &swapchain_frame_buffers[i]);
+                vk::Result result = logical_device.createFramebuffer(&frame_buffer_ci, nullptr, &frame_buffers[i]);
                 result != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("Failed to create vk::Framebuffer!");
@@ -640,119 +642,14 @@ private:
         }
     }
 
-    void create_texture_image() {
-        int tex_width { 0 };
-        int tex_height { 0 };
-        int tex_channels { 0 };
-        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
-        if (!pixels) { throw std::runtime_error("Failed to load texture image!"); }
-
-        vk::DeviceSize image_device_size = tex_width * tex_height * 4u;
-        mip_levels = static_cast<std::uint32_t>(std::floor(std::log2(std::max(tex_width, tex_height)))) + 1u;
-
-        vk::Buffer staging_buffer;
-        vk::DeviceMemory staging_device_memory;
-        create_buffer(
-            image_device_size,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible
-            | vk::MemoryPropertyFlagBits::eHostCoherent,
-            staging_buffer,
-            staging_device_memory
-        );
-
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, image_device_size, {});
-        memcpy(data, pixels, static_cast<std::size_t>(image_device_size));
-        logical_device.unmapMemory(staging_device_memory);
-        stbi_image_free(pixels);
-
-        create_image(
-            tex_width,
-            tex_height,
-            mip_levels,
-            vk::SampleCountFlagBits::e1,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageTiling::eOptimal,
-            vk::ImageUsageFlagBits::eTransferSrc
-            | vk::ImageUsageFlagBits::eTransferDst
-            | vk::ImageUsageFlagBits::eSampled,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            texture_image,
-            texture_device_memory
-        );
-
-        transition_image_layout(
-            texture_image,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal,
-            mip_levels
-        );
-
-        copy_buffer_to_image(
-            staging_buffer,
-            texture_image,
-            static_cast<std::uint32_t>(tex_width),
-            static_cast<std::uint32_t>(tex_height)
-        );
-
-        logical_device.destroy(staging_buffer);
-        logical_device.freeMemory(staging_device_memory);
-
-        generate_mipmaps(
-            texture_image,
-            vk::Format::eR8G8B8A8Srgb,
-            tex_width,
-            tex_height,
-            mip_levels
-        );
-    }
-
-    void create_texture_imageview() {
-        texture_imageview = create_imageview(
-            texture_image,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageAspectFlagBits::eColor,
-            mip_levels
-        );
-    }
-
-    void create_texutre_sampler() {
-        vk::PhysicalDeviceProperties physical_device_properties = physical_device.getProperties();
-
-        vk::SamplerCreateInfo sample_ci {
-            .flags = {},
-            .magFilter = vk::Filter::eLinear,
-            .minFilter = vk::Filter::eLinear,
-            .mipmapMode = vk::SamplerMipmapMode::eLinear,
-            .addressModeU = vk::SamplerAddressMode::eRepeat,
-            .addressModeV = vk::SamplerAddressMode::eRepeat,
-            .addressModeW = vk::SamplerAddressMode::eRepeat,
-            .mipLodBias = 0.0f,
-            .anisotropyEnable = vk::True,
-            .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
-            .compareEnable = vk::False,
-            .compareOp = vk::CompareOp::eAlways,
-            .minLod = 0.0f,
-            .maxLod = vk::LodClampNone,
-            .borderColor = vk::BorderColor::eIntOpaqueBlack,
-            .unnormalizedCoordinates = vk::False
-        };
-        if (
-            vk::Result result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::Sampler!");
-        }
-    }
-
     void load_obj_model() {
         tinyobj::attrib_t attrib;
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
+        std::string warn { ""s };
         std::string err { ""s };
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, nullptr, MODEL_PATH.c_str())) {
-            throw std::runtime_error(err);
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+            minilog::log_fatal(warn + err);
         }
 
         std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
@@ -760,17 +657,17 @@ private:
             for (const auto& index : shape.mesh.indices) {
                 Vertex vertex {
                     .position = {
-                        attrib.vertices[3uz * index.vertex_index + 0uz],
-                        attrib.vertices[3uz * index.vertex_index + 1uz],
-                        attrib.vertices[3uz * index.vertex_index + 2uz]
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 0)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
                     },
                     .color = { 1.0f, 1.0f, 1.0f },
                     .uv = {
-                        attrib.texcoords[2uz * index.texcoord_index + 0uz],
-                        1.0f - attrib.texcoords[2uz * index.texcoord_index + 1uz]
+                        attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
+                        1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
                     }
                 };
-                if (unique_vertices.count(vertex) == 0u) {
+                if (unique_vertices.count(vertex) == 0) {
                     unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
                     vertices.push_back(vertex);
                 }
@@ -859,6 +756,111 @@ private:
         }
     }
 
+    void create_texture_image() {
+        int tex_width { 0 };
+        int tex_height { 0 };
+        int tex_channels { 0 };
+        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+        if (!pixels) { minilog::log_fatal("Failed to load texture image!"); }
+
+        vk::DeviceSize image_device_size = tex_width * tex_height * 4u;
+        mip_levels = static_cast<std::uint32_t>(std::floor(std::log2(std::max(tex_width, tex_height)))) + 1u;
+
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        create_buffer(
+            image_device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, image_device_size, {});
+        memcpy(data, pixels, static_cast<std::size_t>(image_device_size));
+        logical_device.unmapMemory(staging_device_memory);
+        stbi_image_free(pixels);
+
+        create_image(
+            tex_width,
+            tex_height,
+            mip_levels,
+            vk::SampleCountFlagBits::e1,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageTiling::eOptimal,
+            vk::ImageUsageFlagBits::eTransferSrc
+            | vk::ImageUsageFlagBits::eTransferDst
+            | vk::ImageUsageFlagBits::eSampled,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            texture_image,
+            texture_device_memory
+        );
+
+        transition_image_layout(
+            texture_image,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal,
+            mip_levels
+        );
+
+        copy_buffer_to_image(
+            staging_buffer,
+            texture_image,
+            static_cast<std::uint32_t>(tex_width),
+            static_cast<std::uint32_t>(tex_height)
+        );
+
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
+
+        generate_mipmaps(
+            texture_image,
+            vk::Format::eR8G8B8A8Srgb,
+            tex_width,
+            tex_height,
+            mip_levels
+        );
+    }
+
+    void create_texture_imageview() {
+        texture_imageview = create_imageview(
+            texture_image,
+            vk::Format::eR8G8B8A8Srgb,
+            vk::ImageAspectFlagBits::eColor,
+            mip_levels
+        );
+    }
+
+    void create_texutre_sampler() {
+        vk::PhysicalDeviceProperties physical_device_properties = physical_device.getProperties();
+        vk::SamplerCreateInfo sample_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .magFilter = vk::Filter::eLinear,
+            .minFilter = vk::Filter::eLinear,
+            .mipmapMode = vk::SamplerMipmapMode::eLinear,
+            .addressModeU = vk::SamplerAddressMode::eRepeat,
+            .addressModeV = vk::SamplerAddressMode::eRepeat,
+            .addressModeW = vk::SamplerAddressMode::eRepeat,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = vk::True,
+            .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
+            .compareEnable = vk::False,
+            .compareOp = vk::CompareOp::eAlways,
+            .minLod = 0.0f,
+            .maxLod = vk::LodClampNone,
+            .borderColor = vk::BorderColor::eIntOpaqueBlack,
+            .unnormalizedCoordinates = vk::False
+        };
+        if (
+            vk::Result result = logical_device.createSampler(&sample_ci, nullptr, &texture_sampler);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::Sampler!");
+        }
+    }
+
     void create_render_pass() {
         vk::AttachmentDescription attachment_desc_color {
             .flags = {},
@@ -936,11 +938,13 @@ private:
                 | vk::PipelineStageFlagBits::eEarlyFragmentTests,
             .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
                 | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
-            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-            // .dependencyFlags = ,
+            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
+                | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+            .dependencyFlags = {}
         };
 
         vk::RenderPassCreateInfo render_pass_ci {
+            .pNext = nullptr,
             .flags = {},
             .attachmentCount = static_cast<std::uint32_t>(attachment_descs.size()),
             .pAttachments = attachment_descs.data(),
@@ -949,7 +953,6 @@ private:
             .dependencyCount = 1u,
             .pDependencies = &subpass_dependency
         };
-
         if (
             vk::Result result = logical_device.createRenderPass(&render_pass_ci, nullptr, &render_pass);
             result != vk::Result::eSuccess
@@ -1286,8 +1289,26 @@ private:
         }
     }
 
+    void create_sync_objects() {
+        image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+
+        vk::SemaphoreCreateInfo semaphore_ci {};
+        vk::FenceCreateInfo fence_ci { .flags = vk::FenceCreateFlagBits::eSignaled };
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (
+                logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
+                || logical_device.createSemaphore(&semaphore_ci, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
+                || logical_device.createFence(&fence_ci, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
+            ) {
+                minilog::log_fatal("Failed to create synchronization objects for a frame!");
+            }
+        }
+    }
+
     void cleanup_swapchain() {
-        for (auto framebuffer : swapchain_frame_buffers) { logical_device.destroy(framebuffer); }
+        for (auto framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
         for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
         logical_device.destroy(swapchain);
     }
@@ -1305,7 +1326,7 @@ private:
 
         cleanup_swapchain();
         create_swapchain();
-        create_imageviews();
+        create_swapchain_imageviews();
         create_color_resource();
         create_depth_resource();
         create_frame_buffers();
@@ -1330,7 +1351,7 @@ private:
         vk::ClearValue clear_color { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } };
         vk::RenderPassBeginInfo render_pass_begin_info {
             .renderPass = render_pass,
-            .framebuffer = swapchain_frame_buffers[imageIndex],
+            .framebuffer = frame_buffers[imageIndex],
             .renderArea = render_area,
             .clearValueCount = 1u,
             .pClearValues = &clear_color
@@ -1415,7 +1436,7 @@ private:
             .pSignalSemaphores = signal_semaphores
         };
         if (
-            vk::Result result = graphics_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
+            vk::Result result = graphic_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to submit draw command buffer!");
@@ -1443,24 +1464,6 @@ private:
         }
 
         current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
-    }
-
-    void create_sync_objects() {
-        image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
-
-        vk::SemaphoreCreateInfo semaphore_ci {};
-        vk::FenceCreateInfo fence_ci { .flags = vk::FenceCreateFlagBits::eSignaled };
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            if (
-                logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
-                || logical_device.createSemaphore(&semaphore_ci, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
-                || logical_device.createFence(&fence_ci, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
-            ) {
-                minilog::log_fatal("Failed to create synchronization objects for a frame!");
-            }
-        }
     }
 
     QueueFamilyIndex find_queue_families(vk::PhysicalDevice physicalDevice) {
@@ -1498,12 +1501,12 @@ private:
     vk::SurfaceFormatKHR choose_swapchain_surface_format(
         const std::vector<vk::SurfaceFormatKHR>& avaiableFormats
     ) {
-        for (const auto& availableFormat : avaiableFormats) {
+        for (const auto& surface_format : avaiableFormats) {
             if (
-                (availableFormat.format == vk::Format::eB8G8R8A8Srgb)
-                && (availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
+                (surface_format.format == vk::Format::eB8G8R8A8Srgb)
+                && (surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
             ) {
-                return availableFormat;
+                return surface_format;
             }
         }
 
@@ -1513,9 +1516,9 @@ private:
     vk::PresentModeKHR choose_swapchain_present_mode(
         const std::vector<vk::PresentModeKHR>& avaiablePresentModes
     ) {
-        for (const auto& avaiablePresentMode : avaiablePresentModes) {
-            if (avaiablePresentMode == vk::PresentModeKHR::eMailbox) {
-                return avaiablePresentMode;
+        for (const auto& present_mode : avaiablePresentModes) {
+            if (present_mode == vk::PresentModeKHR::eMailbox) {
+                return present_mode;
             }
         }
 
@@ -1606,6 +1609,7 @@ private:
         std::uint32_t mipLevels
     ) {
         vk::ImageViewCreateInfo imageview_info {
+            .pNext = nullptr,
             .flags = {},
             .image = image,
             .viewType = vk::ImageViewType::e2D,
@@ -1624,7 +1628,7 @@ private:
             vk::Result result = logical_device.createImageView(&imageview_info, nullptr, &imageview);
             result != vk::Result::eSuccess
         ) {
-            throw std::runtime_error("Failed to create image view!");
+            minilog::log_fatal("Failed to create image view!");
         }
 
         return imageview;
@@ -1636,21 +1640,21 @@ private:
         vk::FormatFeatureFlags features
     ) {
         for (auto format : candidates) {
-            vk::FormatProperties format_properties = physical_device.getFormatProperties(format);
+            vk::FormatProperties properties = physical_device.getFormatProperties(format);
             if (
                 (tiling == vk::ImageTiling::eLinear)
-                && ((format_properties.linearTilingFeatures & features) == features)
+                && ((properties.linearTilingFeatures & features) == features)
             ) {
                 return format;
             } else if (
                 (tiling == vk::ImageTiling::eOptimal)
-                && ((format_properties.optimalTilingFeatures & features) == features)
+                && ((properties.optimalTilingFeatures & features) == features)
             ) {
                 return format;
             }
         }
 
-        throw std::runtime_error("Failed to find supported vk::Format!");
+        minilog::log_fatal("Failed to find supported vk::Format!");
     }
 
     vk::Format find_depth_format() {
@@ -1696,6 +1700,7 @@ private:
         vk::DeviceMemory& imageMemory
     ) {
         vk::ImageCreateInfo image_ci {
+            .pNext = nullptr,
             .flags = {},
             .imageType = vk::ImageType::e2D,
             .format = format,
@@ -1721,10 +1726,11 @@ private:
             minilog::log_fatal("Failed to create vk::Image!");
         }
 
-        vk::MemoryRequirements memory_requirement = logical_device.getImageMemoryRequirements(image);
+        vk::MemoryRequirements memory_requirements = logical_device.getImageMemoryRequirements(image);
         vk::MemoryAllocateInfo memory_allocate_info {
-            .allocationSize = memory_requirement.size,
-            .memoryTypeIndex = find_memory_type(memory_requirement.memoryTypeBits, properties)
+            .pNext = nullptr,
+            .allocationSize = memory_requirements.size,
+            .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties)
         };
         if (
             vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &imageMemory);
@@ -1740,18 +1746,17 @@ private:
         std::uint32_t typeFilter,
         vk::MemoryPropertyFlags properties
     ) {
-        vk::PhysicalDeviceMemoryProperties
-        physical_device_memory_properties = physical_device.getMemoryProperties();
-        for (std::uint32_t i { 0u }; i < physical_device_memory_properties.memoryTypeCount; ++i) {
+        vk::PhysicalDeviceMemoryProperties memory_properties = physical_device.getMemoryProperties();
+        for (std::uint32_t i { 0u }; i < memory_properties.memoryTypeCount; ++i) {
             if (
                 (typeFilter & (1u << i))
-                && ((physical_device_memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
+                && ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
             ) {
                 return i;
             }
         }
 
-        throw std::runtime_error("Failed to find suitable memory type!");
+        minilog::log_fatal("Failed to find suitable memory type!");
     }
 
     void create_buffer(
@@ -1762,6 +1767,7 @@ private:
         vk::DeviceMemory& bufferMemory
     ) {
         vk::BufferCreateInfo buffer_ci {
+            .pNext = nullptr,
             .flags = {},
             .size = size,
             .usage = usage,
@@ -1776,10 +1782,11 @@ private:
             minilog::log_fatal("Failed to create vk::Buffer!");
         }
 
-        vk::MemoryRequirements memory_requirement = logical_device.getBufferMemoryRequirements(buffer);
+        vk::MemoryRequirements memory_requirements = logical_device.getBufferMemoryRequirements(buffer);
         vk::MemoryAllocateInfo memory_allocate_info {
-            .allocationSize = memory_requirement.size,
-            .memoryTypeIndex = find_memory_type(memory_requirement.memoryTypeBits, properties)
+            .pNext = nullptr,
+            .allocationSize = memory_requirements.size,
+            .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties)
         };
         if (
             vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
@@ -1794,6 +1801,7 @@ private:
     vk::CommandBuffer begin_single_time_commands() {
         vk::CommandBuffer command_buffer;
         vk::CommandBufferAllocateInfo command_buffer_ai {
+            .pNext = nullptr,
             .commandPool = command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1u,
@@ -1802,10 +1810,11 @@ private:
             vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
             result != vk::Result::eSuccess
         ) {
-            throw std::runtime_error("begin_single_time_commands: failed to allocate command buffer!");
+            minilog::log_fatal("begin_single_time_commands: failed to allocate vk::CommandBuffer!");
         }
 
         vk::CommandBufferBeginInfo command_buffer_begin_info {
+            .pNext = nullptr,
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
             .pInheritanceInfo = nullptr
         };
@@ -1813,7 +1822,7 @@ private:
             vk::Result result = command_buffer.begin(&command_buffer_begin_info);
             result != vk::Result::eSuccess
         ) {
-            throw std::runtime_error("begin_single_time_commands: command buffer failed to begin!");
+            minilog::log_fatal("begin_single_time_commands: command buffer failed to begin!");
         }
 
         return command_buffer;
@@ -1823,6 +1832,7 @@ private:
         commandBuffer.end();
 
         vk::SubmitInfo submit_info {
+            .pNext = nullptr,
             .waitSemaphoreCount = 0u,
             .pWaitSemaphores = nullptr,
             .pWaitDstStageMask = {},
@@ -1832,12 +1842,12 @@ private:
             .pSignalSemaphores = nullptr
         };
         if (
-            vk::Result result = graphics_queue.submit(1u, &submit_info, nullptr);
+            vk::Result result = graphic_queue.submit(1u, &submit_info, nullptr);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("end_single_time_commands: failed to submit command buffer!");
         }
-        graphics_queue.waitIdle();
+        graphic_queue.waitIdle();
 
         logical_device.freeCommandBuffers(command_pool, 1u, &commandBuffer);
     }
@@ -1852,6 +1862,7 @@ private:
         vk::CommandBuffer command_buffer = begin_single_time_commands();
 
         vk::ImageMemoryBarrier image_memory_barrier {
+            .pNext = nullptr,
             .srcAccessMask = {},
             .dstAccessMask = {},
             .oldLayout = oldLayout,
@@ -1891,15 +1902,11 @@ private:
         }
 
         command_buffer.pipelineBarrier(
-            src_pipeline_stage_flags,
-            dst_pipeline_stage_flags,
+            src_pipeline_stage_flags, dst_pipeline_stage_flags,
             {},
-            0u,
-            nullptr,
-            0u,
-            nullptr,
-            1u,
-            &image_memory_barrier
+            0u, nullptr,
+            0u, nullptr,
+            1u, &image_memory_barrier
         );
 
         end_single_time_commands(command_buffer);
@@ -1941,11 +1948,12 @@ private:
         vk::FormatProperties
         format_properties = physical_device.getFormatProperties(imageFormat);
         if (!(format_properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear)) {
-            throw std::runtime_error("texture image format does not support linear blitting!");
+            minilog::log_fatal("texture image format does not support linear blitting!");
         }
 
         vk::CommandBuffer command_buffer = begin_single_time_commands();
         vk::ImageMemoryBarrier image_memory_barrier {
+            .pNext = nullptr,
             .srcAccessMask = {},
             .dstAccessMask = {},
             .oldLayout = vk::ImageLayout::eUndefined,
@@ -1956,7 +1964,7 @@ private:
             .subresourceRange {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
                 .baseMipLevel = 0u,
-                .levelCount = 0u,
+                .levelCount = 1u,
                 .baseArrayLayer = 0u,
                 .layerCount = 1u
             }
