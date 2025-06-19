@@ -3,6 +3,7 @@
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
 
+#define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -46,6 +47,7 @@ const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionNa
 
 const std::string MODEL_PATH = "./resource/viking_room.obj";
 const std::string TEXTURE_PATH = "./resource/viking_room.png";
+constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT { 2u };
 
 
 VKAPI_ATTR vk::Bool32 VKAPI_CALL
@@ -200,7 +202,6 @@ private:
     std::vector<vk::Semaphore> render_finished_semaphores;
     std::vector<vk::Fence> in_flight_fences;
     std::uint32_t current_frame { 0u };
-    static constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT { 2u };
     bool framebuffer_resized { false };
 
 public:
@@ -256,7 +257,7 @@ private:
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         glfw_window = glfwCreateWindow(width, height, window_name.c_str(), nullptr, nullptr);
-        if (!glfw_window) { minilog::log_fatal("GLFW Failed to create GLFWwindow!"); }
+        if (!glfw_window) { minilog::log_fatal("Failed to create GLFWwindow!"); }
 
         glfwSetWindowUserPointer(glfw_window, this);
         glfwSetFramebufferSizeCallback(
