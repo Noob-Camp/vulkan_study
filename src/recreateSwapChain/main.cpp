@@ -185,7 +185,6 @@ private:
     vk::DeviceMemory vertex_device_memory;
     vk::Buffer index_buffer;
     vk::DeviceMemory index_device_memory;
-
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
@@ -218,25 +217,39 @@ public:
     {}
 
     ~Application() {
-        cleanup_swapchain();
-
-        logical_device.destroy(render_pipeline);;
-        logical_device.destroy(render_pipeline_layout);
-        logical_device.destroy(render_pass);
-
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             logical_device.destroy(render_finished_semaphores[i]);
             logical_device.destroy(image_available_semaphores[i]);
             logical_device.destroy(in_flight_fences[i]);
         }
-
+        logical_device.destroy(descriptor_pool);
+        logical_device.destroy(render_pipeline);;
+        logical_device.destroy(render_pipeline_layout);
+        logical_device.destroy(descriptor_set_layout);
+        logical_device.destroy(render_pass);
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            logical_device.destroy(uniform_buffers[i]);
+            logical_device.destroy(uniform_device_memorys[i]);
+        }
+        logical_device.destroy(index_buffer);
+        logical_device.destroy(index_device_memory);
+        logical_device.destroy(vertex_buffer);
+        logical_device.destroy(vertex_device_memory);
+        logical_device.destroy(texture_sampler);
+        logical_device.destroy(texture_imageview);
+        logical_device.destroy(texture_device_memory);
+        logical_device.destroy(texture_image);
+        cleanup_swapchain();
         logical_device.destroy(command_pool);
         logical_device.destroy();
 
-        // if (ENABLE_VALIDATION_LAYER) {
-        //     instance.destroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        // }
-
+        if (ENABLE_VALIDATION_LAYER) {
+            vk::detail::DynamicLoader dynamic_loader;
+            PFN_vkGetInstanceProcAddr getInstanceProcAddr =
+                dynamic_loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+            vk::detail::DispatchLoaderDynamic dispatch_loader_dynamic(instance, getInstanceProcAddr);
+            instance.destroyDebugUtilsMessengerEXT(debug_utils_messenger, nullptr, dispatch_loader_dynamic);
+        }
         instance.destroy(surface);
         instance.destroy();
 
@@ -1413,8 +1426,15 @@ private:
     }
 
     void cleanup_swapchain() {
-        for (auto framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
-        for (auto imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
+        logical_device.destroy(depth_imageview);
+        logical_device.destroy(depth_image);
+        logical_device.destroy(depth_device_memory);
+        logical_device.destroy(color_imageview);
+        logical_device.destroy(color_image);
+        logical_device.destroy(color_device_memory);
+        for (auto& framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
+        for (auto& imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
+        for (auto& image : swapchain_images) { logical_device.destroy(image); }
         logical_device.destroy(swapchain);
     }
 
