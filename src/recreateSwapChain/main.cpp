@@ -217,20 +217,20 @@ public:
     {}
 
     ~Application() {
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            logical_device.destroy(render_finished_semaphores[i]);
-            logical_device.destroy(image_available_semaphores[i]);
-            logical_device.destroy(in_flight_fences[i]);
-        }
+        // for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        //     logical_device.destroy(render_finished_semaphores[i]);
+        //     logical_device.destroy(image_available_semaphores[i]);
+        //     logical_device.destroy(in_flight_fences[i]);
+        // }
         logical_device.destroy(descriptor_pool);
         logical_device.destroy(render_pipeline);;
         logical_device.destroy(render_pipeline_layout);
         logical_device.destroy(descriptor_set_layout);
         logical_device.destroy(render_pass);
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            logical_device.destroy(uniform_buffers[i]);
-            logical_device.freeMemory(uniform_device_memorys[i]);
-        }
+        // for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        //     logical_device.destroy(uniform_buffers[i]);
+        //     logical_device.freeMemory(uniform_device_memorys[i]);
+        // }
         logical_device.destroy(index_buffer);
         logical_device.freeMemory(index_device_memory);
         logical_device.destroy(vertex_buffer);
@@ -239,7 +239,7 @@ public:
         logical_device.destroy(texture_imageview);
         logical_device.freeMemory(texture_device_memory);
         logical_device.destroy(texture_image);
-        cleanup_swapchain();
+        // cleanup_swapchain();
         logical_device.destroy(command_pool);
         logical_device.destroy();
 
