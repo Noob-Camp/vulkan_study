@@ -1458,8 +1458,8 @@ private:
         };
         std::array<vk::ClearValue, 2uz> clear_values = {
             vk::ClearValue { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } },
-            vk::ClearValue { .depthStencil { .depth = 1.0f, .stencil = 0u }
-        }
+            vk::ClearValue { .depthStencil { .depth = 1.0f, .stencil = 0u } }
+        };
         vk::RenderPassBeginInfo render_pass_begin_info {
             .pNext = nullptr,
             .renderPass = render_pass,
