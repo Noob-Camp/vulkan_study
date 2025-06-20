@@ -154,7 +154,7 @@ private:
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
     std::vector<vk::Buffer> storage_buffers;
-    std::vector<vk::DeviceMemory> storage_device_memory;
+    std::vector<vk::DeviceMemory> storage_device_memorys;
 
     vk::RenderPass render_pass;
     vk::PipelineLayout render_pipeline_layout;
@@ -453,6 +453,7 @@ private:
         }
 
         logical_device.getQueue(queue_family_index.graphic_and_compute.value(), 0u, &graphic_queue);
+        logical_device.getQueue(queue_family_index.graphic_and_compute.value(), 0u, &compute_queue);
         logical_device.getQueue(queue_family_index.present.value(), 0u, &present_queue);
     }
 
@@ -574,7 +575,7 @@ private:
         uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         uniform_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
         uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
-        vk::DeviceSize device_size = sizeof(ProjectionTransformation);
+        vk::DeviceSize device_size = sizeof(UniformBufferObject);
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             create_buffer(
                 device_size,
@@ -590,7 +591,7 @@ private:
 
     void create_storage_buffers() {
         // Initialize particles
-        std::defult_random_engine rnd_engine((unsigned)time(nullptr));
+        std::default_random_engine rnd_engine((unsigned)time(nullptr));
         std::uniform_real_distribution<float> rnd_dist(0.0f, 1.0f);
 
         // Initialize particle positions on a circle
@@ -602,7 +603,7 @@ private:
             float y = r * std::sin(theta);
             particle.position = glm::vec2(x, y);
             particle.velocity = glm::normalize(glm::vec2(x, y)) * 0.00025f;
-            particle.color = glm::vec4(rnd_dist(rng_engine), rnd_dist(rng_engine), rnd_dist(rng_engine), 1.0f);
+            particle.color = glm::vec4(rnd_dist(rnd_engine), rnd_dist(rnd_engine), rnd_dist(rnd_engine), 1.0f);
         }
 
         vk::DeviceSize device_size = sizeof(Particle) * PARTICLE_COUNT;
@@ -634,7 +635,7 @@ private:
                 storage_buffers[i],
                 storage_device_memorys[i]
             );
-            copy_buffer(staging_buffer, storage_buffer[i], vertex_device_size);
+            copy_buffer(staging_buffer, storage_buffers[i], device_size);
         }
 
         logical_device.destroy(staging_buffer);
@@ -890,7 +891,7 @@ private:
             .pViewportState = &viewport_state_ci,
             .pRasterizationState = &rasterization_state_ci,
             .pMultisampleState = &multisample_state_ci,
-            .pDepthStencilState = &depth_stencil_state_ci,
+            .pDepthStencilState = nullptr,
             .pColorBlendState = &color_blend_state_ci,
             .pDynamicState = &dynamic_state_ci,
             .layout = render_pipeline_layout,
@@ -1160,7 +1161,7 @@ private:
 
             if (
                 logical_device.createSemaphore(&semaphore_ci, nullptr, &compute_finished_semaphores[i]) != vk::Result::eSuccess
-                | logical_device.createSemaphore(&semaphore_ci, nullptr, &compute_in_flight_fences[i]) != vk::Result::eSuccess
+                || logical_device.createFence(&fence_ci, nullptr, &compute_in_flight_fences[i]) != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("Failed to create compute synchronization objects for a frame!");
             }
@@ -1187,18 +1188,18 @@ private:
             minilog::log_debug("compute: resetFences failed!");
         }
 
-        command_buffers[current_frame].reset({});
-        record_compute_command_buffer(command_buffers[current_frame]);
+        compute_command_buffers[current_frame].reset();
+        record_compute_command_buffer(compute_command_buffers[current_frame]);
 
         vk::SubmitInfo compute_submit_info {
             .pNext = nullptr,
-            .waitSemaphoreCount = 1u,
-            .pWaitSemaphores = wait_semaphores,
-            .pWaitDstStageMask = wait_stages,
+            .waitSemaphoreCount = 0u,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
             .commandBufferCount = 1u,
-            .pCommandBuffers = &command_buffers[current_frame],
+            .pCommandBuffers = &compute_command_buffers[current_frame],
             .signalSemaphoreCount = 1u,
-            .pSignalSemaphores = signal_semaphores
+            .pSignalSemaphores = &compute_finished_semaphores[current_frame]
         };
         if (
             vk::Result result = compute_queue.submit(1u, &compute_submit_info, compute_in_flight_fences[current_frame]);
@@ -1206,7 +1207,6 @@ private:
         ) {
             minilog::log_fatal("Failed to submit compute command buffer!");
         }
-
 
         // Render submission
         if (
@@ -1485,7 +1485,7 @@ private:
 
         return queue_family_index.has_value()
             && extensions_supported
-            && swapchain_adequate
+            && swapchain_adequate;
     }
 
     vk::ImageView create_imageview(
@@ -1685,31 +1685,8 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
-        static auto start_time = std::chrono::high_resolution_clock::now();
-
-        auto current_time = std::chrono::high_resolution_clock::now();
-        auto time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
-        ProjectionTransformation ubo {
-            .model = glm::rotate(
-                glm::mat4(1.0f),
-                time * glm::radians(90.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            ),
-            .view = glm::lookAt(
-                glm::vec3(2.0f, 2.0f, 2.0f),
-                glm::vec3(0.0f, 0.0f, 0.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            ),
-            .proj = glm::perspective(
-                glm::radians(45.0f),
-                static_cast<float>(swapchain_extent.width)
-                    / static_cast<float>(swapchain_extent.height),
-                0.1f,
-                10.0f
-            )
-        };
-        ubo.proj[1][1] *= -1.0f;
+        UniformBufferObject ubo {};
+        ubo.delta_time = last_frame_time * 2.0f;
 
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
     }
