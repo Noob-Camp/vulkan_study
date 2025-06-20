@@ -7,7 +7,6 @@
 #include <vector>
 #include <string>
 #include <optional>
-#include <iostream>
 
 #ifdef NDEBUG
     constexpr bool ENABLE_VALIDATION_LAYER { false };
@@ -81,13 +80,13 @@ private:
 
     vk::DescriptorPool descriptor_pool;
     vk::DescriptorSetLayout descriptor_set_layout;
-    std::array<vk::DescriptorSet, 1uz> descriptor_sets;
+    vk::DescriptorSet descriptor_set;
 
     vk::PipelineLayout pipeline_layout;
     vk::Pipeline compute_pipeline;
 
     vk::CommandPool command_pool;
-    std::array<vk::CommandBuffer, 1uz> command_buffers;
+    vk::CommandBuffer command_buffer;
 
     std::array<float, 1024uz> input_data;
     std::array<float, 1024uz> output_data;
@@ -381,7 +380,7 @@ public:
             .pSetLayouts = &descriptor_set_layout
         };
         if (
-            vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, descriptor_sets.data());
+            vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, &descriptor_set);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create vk::DescriptorSet");
@@ -394,7 +393,7 @@ public:
         };
 
         vk::WriteDescriptorSet write_descriptor_set {
-            .dstSet = descriptor_sets[0uz],
+            .dstSet = descriptor_set,
             .dstBinding = 0u,
             .dstArrayElement = 0u,
             .descriptorCount = 1u,
@@ -468,7 +467,7 @@ public:
             .commandBufferCount = 1u
         };
         if (
-            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, command_buffers.data());
+            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("failed to create command buffer!");
@@ -485,29 +484,29 @@ public:
 
         vk::CommandBufferBeginInfo command_buffer_begin_info {};
         if (
-            vk::Result result = command_buffers[0].begin(&command_buffer_begin_info);
+            vk::Result result = command_buffer.begin(&command_buffer_begin_info);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("command buffer failed to begin!");
         }
 
-        command_buffers[0].bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
-        command_buffers[0].bindDescriptorSets(
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
+        command_buffer.bindDescriptorSets(
             vk::PipelineBindPoint::eCompute,
             pipeline_layout,
             0u,
             1u,
-            descriptor_sets.data(),
+            &descriptor_set,
             0u,
             nullptr
         );
-        command_buffers[0].dispatch(4u, 1u, 1u);
-        command_buffers[0].end();
+        command_buffer.dispatch(4u, 1u, 1u);
+        command_buffer.end();
 
         vk::SubmitInfo submit_info {
             .waitSemaphoreCount = 0u,
             .commandBufferCount = 1u,
-            .pCommandBuffers = &command_buffers[0],
+            .pCommandBuffers = &command_buffer,
             .signalSemaphoreCount = 0u
         };
 
@@ -576,7 +575,7 @@ int main() {
     try {
         hello_compute_shader.run();
     } catch (std::runtime_error e) {
-        std::cerr << e.what() << std::endl;
+        minilog::log_fatal("{}", e.what());
         return 1;
     }
 
