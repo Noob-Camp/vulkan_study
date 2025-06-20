@@ -706,8 +706,8 @@ private:
 
     void create_graphic_pipeline() {
         // Create graphic pipeline layout
-        std::vector<char> vert_code = read_shader_file("./src/recreateSwapChain/shaders/vert.spv");
-        std::vector<char> frag_code = read_shader_file("./src/recreateSwapChain/shaders/frag.spv");
+        std::vector<char> vert_code = read_shader_file("./src/particle_system/shaders/vert.spv");
+        std::vector<char> frag_code = read_shader_file("./src/particle_system/shaders/frag.spv");
         vk::ShaderModule vert_shader_module = create_shader_module(vert_code);
         vk::ShaderModule frag_shader_module = create_shader_module(frag_code);
         vk::PipelineShaderStageCreateInfo vert_pipeline_shader_stage_ci {
@@ -964,7 +964,7 @@ private:
     }
 
     void create_compute_pipeline() {
-        std::vector<char> comp_code = read_shader_file("./src/particle_system/comp.spv");
+        std::vector<char> comp_code = read_shader_file("./src/particle_system/shaders/comp.spv");
         vk::ShaderModule comp_shader_module = create_shader_module(comp_code);
         vk::PipelineShaderStageCreateInfo comp_pipeline_shader_stage_ci {
             .pNext = nullptr,
