@@ -52,7 +52,7 @@ debug_callback(
 
 std::vector<char> read_shader_file(const std::string& fileName) {
     std::ifstream file(fileName, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) { minilog::log_fatal("failed to open file: {}", fileName); }
+    if (!file.is_open()) { minilog::log_fatal("Failed to open file: {}", fileName); }
 
     std::size_t file_size = static_cast<std::size_t>(file.tellg());
     std::vector<char> buffer(file_size);
@@ -193,7 +193,7 @@ public:
             vk::Result result = vk::createInstance(&instance_ci, nullptr, &instance);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::Instance!");
+            minilog::log_fatal("Failed to create vk::Instance!");
         }
     }
 
@@ -224,7 +224,7 @@ public:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to set up debug messenger!");
+            minilog::log_fatal("Failed to set up debug messenger!");
         }
     }
 
@@ -242,7 +242,7 @@ public:
             if (compute_queue_family_index.has_value()) { break; }
         }
 
-        if (physical_device == nullptr) { minilog::log_fatal("failed to find a suitable GPU!"); }
+        if (physical_device == nullptr) { minilog::log_fatal("Failed to find a suitable GPU!"); }
     }
 
     void create_logical_device() {
@@ -272,7 +272,7 @@ public:
             vk::Result result = physical_device.createDevice(&device_ci, nullptr, &logical_device);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create logical device!");
+            minilog::log_fatal("Failed to create logical device!");
         }
 
         logical_device.getQueue(compute_queue_family_index.value(), 0, &compute_queue);
@@ -292,7 +292,7 @@ public:
             vk::Result result = logical_device.createBuffer(&buffer_ci, nullptr, &storage_buffer);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::buffer!");
+            minilog::log_fatal("Failed to create vk::buffer!");
         }
 
         vk::MemoryRequirements memory_requirements = logical_device.getBufferMemoryRequirements(storage_buffer);
@@ -309,7 +309,7 @@ public:
             vk::Result result = logical_device.allocateMemory(&memory_ai, nullptr, &storage_buffer_memory);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to allocate buffer memory!");
+            minilog::log_fatal("Failed to allocate buffer memory!");
         }
 
         logical_device.bindBufferMemory(storage_buffer, storage_buffer_memory, 0u);
@@ -321,7 +321,7 @@ public:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to map memory!");
+            minilog::log_fatal("Failed to map memory!");
         }
         memcpy(data, input_data.data(), sizeof(input_data));
         logical_device.unmapMemory(storage_buffer_memory);
@@ -344,7 +344,7 @@ public:
             vk::Result result = logical_device.createDescriptorPool(&descriptor_pool_ci, nullptr, &descriptor_pool);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create descriptor pool!");
+            minilog::log_fatal("Failed to create descriptor pool!");
         }
     }
 
@@ -369,7 +369,7 @@ public:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create descriptor_set_layout!");
+            minilog::log_fatal("Failed to create descriptor_set_layout!");
         }
     }
 
@@ -383,7 +383,7 @@ public:
             vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, &descriptor_set);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::DescriptorSet");
+            minilog::log_fatal("Failed to create vk::DescriptorSet");
         }
 
         vk::DescriptorBufferInfo descriptor_buffer_info {
@@ -440,7 +440,7 @@ public:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create compute vk::Pipeline!");
+            minilog::log_fatal("Failed to create compute vk::Pipeline!");
         }
 
         logical_device.destroyShaderModule(compute_shader_module, nullptr);
@@ -456,7 +456,7 @@ public:
             vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create command pool!");
+            minilog::log_fatal("Failed to create command pool!");
         }
     }
 
@@ -470,7 +470,7 @@ public:
             vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, &command_buffer);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create command buffer!");
+            minilog::log_fatal("Failed to create command buffer!");
         }
     }
 
@@ -511,7 +511,7 @@ public:
         };
 
         if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
-            minilog::log_fatal("failed to submit command buffer!");
+            minilog::log_fatal("Failed to submit command buffer!");
         }
         compute_queue.waitIdle(); // wait the calculation to finish
 
@@ -558,7 +558,7 @@ private:
             vk::Result result = logical_device.createShaderModule(&shader_module_ci, nullptr, &shader_module);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("failed to create vk::ShaderModule");
+            minilog::log_fatal("Failed to create vk::ShaderModule");
         }
 
         return shader_module;
