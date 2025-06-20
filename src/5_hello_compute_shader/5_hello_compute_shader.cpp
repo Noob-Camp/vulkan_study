@@ -9,12 +9,12 @@
 #include <optional>
 #include <iostream>
 
-
 #ifdef NDEBUG
     constexpr bool ENABLE_VALIDATION_LAYER { false };
 #else
     constexpr bool ENABLE_VALIDATION_LAYER { true };
 #endif
+
 
 const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validation" };
 const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName };
@@ -202,7 +202,7 @@ public:
         if (!ENABLE_VALIDATION_LAYER) { return ; }
 
         vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_ci {
-            .flags = vk::DebugUtilsMessengerCreateFlagsEXT{},
+            .flags = {},
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
                 | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo
                 | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
@@ -281,7 +281,7 @@ public:
 
     void create_storage_buffer() {
         vk::BufferCreateInfo buffer_ci {
-            .flags = vk::BufferCreateFlags{},
+            .flags = {},
             .size = sizeof(input_data),
             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
             .sharingMode = vk::SharingMode::eExclusive,
@@ -335,7 +335,7 @@ public:
         };
 
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
-            .flags = vk::DescriptorPoolCreateFlags{},
+            .flags = {},
             .maxSets = 1u,
             .poolSizeCount = 1u,
             .pPoolSizes = &descriptor_pool_size
@@ -359,7 +359,7 @@ public:
         };
 
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-            .flags = vk::DescriptorSetLayoutCreateFlags{},
+            .flags = {},
             .bindingCount = 1u,
             .pBindings = &descriptor_set_layout_binding
         };
@@ -412,7 +412,7 @@ public:
         vk::ShaderModule compute_shader_module = _create_shader_module(compute_shader_code);
 
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
-            .flags = vk::PipelineShaderStageCreateFlags{},
+            .flags = {},
             .stage = vk::ShaderStageFlagBits::eCompute,
             .module = compute_shader_module,
             .pName = "main",
@@ -420,7 +420,7 @@ public:
         };
 
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
-            .flags = vk::PipelineLayoutCreateFlags{},
+            .flags = {},
             .setLayoutCount = 1u,
             .pSetLayouts = &descriptor_set_layout,
             .pushConstantRangeCount = 0u,
@@ -429,7 +429,7 @@ public:
         pipeline_layout = logical_device.createPipelineLayout(pipeline_layout_ci);
 
         vk::ComputePipelineCreateInfo compute_pipeline_ci {
-            .flags = vk::PipelineCreateFlags{},
+            .flags = {},
             .stage = pipeline_shader_stage_ci,
             .layout = pipeline_layout,
             .basePipelineHandle = VK_NULL_HANDLE,
@@ -549,7 +549,7 @@ private:
 
     vk::ShaderModule _create_shader_module(const std::vector<char>& code) {
         vk::ShaderModuleCreateInfo shader_module_ci {
-            .flags = vk::ShaderModuleCreateFlags{},
+            .flags = {},
             .codeSize = code.size(),
             .pCode = reinterpret_cast<const std::uint32_t*>(code.data())
         };
