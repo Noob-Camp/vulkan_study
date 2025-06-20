@@ -31,12 +31,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 
-add_subdirectory(src/1_glfw)
-add_subdirectory(src/2_triangle)
-add_subdirectory(src/recreateSwapChain)
-add_subdirectory(src/hello_compute_shader)
-add_subdirectory(src/path_tracing)
-# add_subdirectory(src/view3DObject)
+add_subdirectory(src/1_hello_vulkan)
+add_subdirectory(src/2_hello_render_shader)
+add_subdirectory(src/3_recreate_swapchain)
+# add_subdirectory(src/4_object_viewer)
+add_subdirectory(src/5_hello_compute_shader)
+# add_subdirectory(src/6_particle_system)
+# add_subdirectory(src/7_path_tracing)
+# add_subdirectory(src/8_ray_traing_in_one_weekend)
 # add_subdirectory(src/rayTracingWithComputeShader)
 
 

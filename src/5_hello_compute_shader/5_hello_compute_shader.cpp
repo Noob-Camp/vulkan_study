@@ -407,7 +407,7 @@ public:
     }
 
     void create_compute_pipeline() {
-        std::vector<char> compute_shader_code = read_shader_file("./src/5_hello_compute_shader/5_hello_compute_shader.spv");
+        std::vector<char> compute_shader_code = read_shader_file("./src/5_hello_compute_shader/shaders/5_hello_compute_shader.spv");
         vk::ShaderModule compute_shader_module = create_shader_module(compute_shader_code);
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
             .flags = {},

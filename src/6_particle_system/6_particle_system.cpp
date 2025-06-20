@@ -26,6 +26,7 @@
 #include <optional>
 #include <set>
 #include <cstddef> // offsetof
+#include <random>
 
 #ifdef NDEBUG
     constexpr bool ENABLE_VALIDATION_LAYER { false };
@@ -177,9 +178,9 @@ private:
     double last_time { 0.0 };
 
 public:
-    Application() = default;
+    ParticleSystem() = default;
 
-    Application(
+    ParticleSystem(
         std::uint32_t _width,
         std::uint32_t _height,
         const std::string& window_name
@@ -189,7 +190,7 @@ public:
         , window_name { window_name }
     {}
 
-    ~Application() {
+    ~ParticleSystem() {
         cleanup_swapchain();
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             logical_device.destroy(render_finished_semaphores[i]);
@@ -245,7 +246,7 @@ private:
         glfwSetFramebufferSizeCallback(
             glfw_window,
             [](GLFWwindow* window, int width, int height) {
-                auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+                auto app = reinterpret_cast<ParticleSystem*>(glfwGetWindowUserPointer(window));
                 app->framebuffer_resized = true;
                 minilog::log_info("the window's size is ({0}, {1})", width, height);
             }
