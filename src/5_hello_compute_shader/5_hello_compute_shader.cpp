@@ -82,7 +82,7 @@ private:
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorSet descriptor_set;
 
-    vk::PipelineLayout pipeline_layout;
+    vk::PipelineLayout compute_pipeline_layout;
     vk::Pipeline compute_pipeline;
 
     vk::CommandPool command_pool;
@@ -100,7 +100,7 @@ public:
     ~HelloComputeShader() {
         logical_device.destroyCommandPool(command_pool);
         logical_device.destroyPipeline(compute_pipeline);
-        logical_device.destroyPipelineLayout(pipeline_layout);
+        logical_device.destroyPipelineLayout(compute_pipeline_layout);
         logical_device.destroyDescriptorSetLayout(descriptor_set_layout);
         logical_device.destroyDescriptorPool(descriptor_pool, nullptr);
         logical_device.freeMemory(storage_buffer_memory);
@@ -408,8 +408,7 @@ public:
 
     void create_compute_pipeline() {
         std::vector<char> compute_shader_code = read_shader_file("./src/5_hello_compute_shader/5_hello_compute_shader.spv");
-        vk::ShaderModule compute_shader_module = _create_shader_module(compute_shader_code);
-
+        vk::ShaderModule compute_shader_module = create_shader_module(compute_shader_code);
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
             .flags = {},
             .stage = vk::ShaderStageFlagBits::eCompute,
@@ -425,12 +424,12 @@ public:
             .pushConstantRangeCount = 0u,
             .pPushConstantRanges = nullptr
         };
-        pipeline_layout = logical_device.createPipelineLayout(pipeline_layout_ci);
+        compute_pipeline_layout = logical_device.createPipelineLayout(pipeline_layout_ci);
 
         vk::ComputePipelineCreateInfo compute_pipeline_ci {
             .flags = {},
             .stage = pipeline_shader_stage_ci,
-            .layout = pipeline_layout,
+            .layout = compute_pipeline_layout,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1
         };
@@ -493,7 +492,7 @@ public:
         command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline);
         command_buffer.bindDescriptorSets(
             vk::PipelineBindPoint::eCompute,
-            pipeline_layout,
+            compute_pipeline_layout,
             0u,
             1u,
             &descriptor_set,
@@ -546,7 +545,7 @@ private:
         return 0u;
     }
 
-    vk::ShaderModule _create_shader_module(const std::vector<char>& code) {
+    vk::ShaderModule create_shader_module(const std::vector<char>& code) {
         vk::ShaderModuleCreateInfo shader_module_ci {
             .flags = {},
             .codeSize = code.size(),
