@@ -3,7 +3,7 @@
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
 
-#define GLM_FORCE_RADIANS
+// #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -44,8 +44,8 @@ const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validatio
 // const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName }; // TODO
 const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionName };
 
-const std::string MODEL_PATH = "./resource/viking_room.obj";
-const std::string TEXTURE_PATH = "./resource/viking_room.png";
+const std::string MODEL_PATH { "resource/viking_room.obj"s };
+const std::string TEXTURE_PATH { "resource/viking_room.png"s };
 constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT { 2u };
 
 
@@ -299,7 +299,6 @@ private:
         create_swapchain_imageviews();
         create_color_resource();
         create_depth_resource();
-        create_frame_buffers();
 
         load_obj_model();
         create_vertex_buffer();
@@ -312,6 +311,8 @@ private:
         create_render_pass();
         create_descriptor_set_layout();
         create_graphic_pipeline();
+
+        create_frame_buffers();
 
         create_descriptor_pool();
         create_descriptor_sets();
@@ -374,9 +375,9 @@ private:
             .ppEnabledExtensionNames = instance_extensions.data()
         };
         if (ENABLE_VALIDATION_LAYER) {
-            vk::DebugUtilsMessengerCreateInfoEXT
-            debug_utils_messenger_ci = create_debug_messenger_ci();
-            instance_ci.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*)&debug_utils_messenger_ci;
+            // vk::DebugUtilsMessengerCreateInfoEXT
+            // debug_utils_messenger_ci = create_debug_messenger_ci();
+            // instance_ci.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*)&debug_utils_messenger_ci;
             instance_ci.enabledLayerCount = static_cast<std::uint32_t>(VALIDATION_LAYERS.size());
             instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
         }
@@ -684,6 +685,22 @@ private:
                 }
                 indices.push_back(unique_vertices[vertex]);
             }
+        }
+
+        // For debug
+        for (const auto& i : vertices) {
+            minilog::log_debug(
+                "position: ({}, {}, {})",
+                i.position.x, i.position.y, i.position.z
+            );
+            minilog::log_debug(
+                "color: ({}, {}, {})",
+                i.color.x, i.color.y, i.color.z
+            );
+            minilog::log_debug(
+                "uv: ({}, {})",
+                i.uv.x, i.uv.y
+            );
         }
     }
 
@@ -1434,7 +1451,6 @@ private:
         logical_device.freeMemory(color_device_memory);
         for (auto& framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
         for (auto& imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
-        for (auto& image : swapchain_images) { logical_device.destroy(image); }
         logical_device.destroy(swapchain);
     }
 
@@ -1458,27 +1474,24 @@ private:
     }
 
     void record_command_buffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex) {
-        vk::CommandBufferBeginInfo command_buffer_begin_info {
+        vk::CommandBufferBeginInfo command_buffer_bi {
             .pNext = nullptr,
             .flags = {},
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = commandBuffer.begin(&command_buffer_begin_info); // command buffer begin
+            vk::Result result = commandBuffer.begin(&command_buffer_bi); // command buffer begin
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to begin recording command buffer!");
         }
 
-        vk::Rect2D render_area {
-            .offset { .x = 0, .y = 0 },
-            .extent = swapchain_extent
-        };
+        vk::Rect2D render_area { .offset { .x = 0, .y = 0 }, .extent = swapchain_extent };
         std::array<vk::ClearValue, 2uz> clear_values = {
             vk::ClearValue { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } },
             vk::ClearValue { .depthStencil { .depth = 1.0f, .stencil = 0u } }
         };
-        vk::RenderPassBeginInfo render_pass_begin_info {
+        vk::RenderPassBeginInfo render_pass_bi {
             .pNext = nullptr,
             .renderPass = render_pass,
             .framebuffer = frame_buffers[imageIndex],
@@ -1486,7 +1499,7 @@ private:
             .clearValueCount = static_cast<std::uint32_t>(clear_values.size()),
             .pClearValues = clear_values.data()
         };
-        commandBuffer.beginRenderPass(&render_pass_begin_info, vk::SubpassContents::eInline); // render pass begin
+        commandBuffer.beginRenderPass(&render_pass_bi, vk::SubpassContents::eInline); // render pass begin
         vk::Viewport viewport {
             .x = 0.0f,
             .y = 0.0f,
@@ -1871,13 +1884,13 @@ private:
             minilog::log_fatal("begin_single_time_commands: failed to allocate vk::CommandBuffer!");
         }
 
-        vk::CommandBufferBeginInfo command_buffer_begin_info {
+        vk::CommandBufferBeginInfo command_buffer_bi {
             .pNext = nullptr,
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = command_buffer.begin(&command_buffer_begin_info);
+            vk::Result result = command_buffer.begin(&command_buffer_bi);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("begin_single_time_commands: command buffer failed to begin!");
@@ -2178,6 +2191,9 @@ private:
 
 
 int main() {
+    minilog::set_log_level(minilog::log_level::trace); // default log level is 'info'
+    // minilog::set_log_file("./mini.log"); // dump log to a specific file
+
     Application application {};
 
     try {

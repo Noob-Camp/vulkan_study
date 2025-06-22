@@ -28,11 +28,11 @@
 #include <cstddef> // offsetof
 #include <random>
 
-#ifdef NDEBUG
-    constexpr bool ENABLE_VALIDATION_LAYER { false };
-#else
+// #ifdef NDEBUG
+//     constexpr bool ENABLE_VALIDATION_LAYER { false };
+// #else
     constexpr bool ENABLE_VALIDATION_LAYER { true };
-#endif
+// #endif
 
 using namespace std::literals::string_literals;
 
@@ -211,6 +211,8 @@ public:
             logical_device.freeMemory(uniform_device_memorys[i]);
         }
         logical_device.destroy(command_pool);
+
+        logical_device.waitIdle();
         logical_device.destroy();
 
         if (ENABLE_VALIDATION_LAYER) {
@@ -392,7 +394,7 @@ private:
         ) {
             surface = vk::SurfaceKHR(_surface);
         } else {
-            minilog::log_fatal("Failed to create vk::SurfaceKHR!");
+            minilog::log_fatal("Failed to create vk::SurfaceKHR: {}!", static_cast<std::int32_t>(result));
         }
     }
 
@@ -1037,8 +1039,8 @@ private:
                 .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT)
             },
             vk::DescriptorPoolSize {
-                .type = vk::DescriptorType::eCombinedImageSampler,
-                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT)
+                .type = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2u
             }
         };
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
@@ -1188,10 +1190,10 @@ private:
             minilog::log_debug("compute: resetFences failed!");
         }
 
-        compute_command_buffers[current_frame].reset();
+        compute_command_buffers[current_frame].reset({});
         record_compute_command_buffer(compute_command_buffers[current_frame]);
 
-        vk::SubmitInfo compute_submit_info {
+        vk::SubmitInfo submit_info {
             .pNext = nullptr,
             .waitSemaphoreCount = 0u,
             .pWaitSemaphores = nullptr,
@@ -1202,10 +1204,10 @@ private:
             .pSignalSemaphores = &compute_finished_semaphores[current_frame]
         };
         if (
-            vk::Result result = compute_queue.submit(1u, &compute_submit_info, compute_in_flight_fences[current_frame]);
+            vk::Result result = compute_queue.submit(1u, &submit_info, compute_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("Failed to submit compute command buffer!");
+            minilog::log_fatal("compute: failed to submit compute command buffer!");
         }
 
         // Render submission
@@ -1215,7 +1217,7 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("waitForFences failed!");
+            minilog::log_debug("render: waitForFences failed!");
         }
 
         std::uint32_t image_index { 0u };
@@ -1253,21 +1255,19 @@ private:
             vk::PipelineStageFlagBits::eVertexInput,
             vk::PipelineStageFlagBits::eColorAttachmentOutput
         };
-        vk::SubmitInfo submitInfo {
-            .pNext = nullptr,
-            .waitSemaphoreCount = 2u,
-            .pWaitSemaphores = wait_semaphores,
-            .pWaitDstStageMask = wait_stages,
-            .commandBufferCount = 1u,
-            .pCommandBuffers = &command_buffers[current_frame],
-            .signalSemaphoreCount = 1u,
-            .pSignalSemaphores = &render_finished_semaphores[current_frame]
-        };
+        submit_info.pNext = nullptr;
+        submit_info.waitSemaphoreCount = 2u;
+        submit_info.pWaitSemaphores = wait_semaphores;
+        submit_info.pWaitDstStageMask = wait_stages;
+        submit_info.commandBufferCount = 1u;
+        submit_info.pCommandBuffers = &command_buffers[current_frame];
+        submit_info.signalSemaphoreCount = 1u;
+        submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
         if (
-            vk::Result result = graphic_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
+            vk::Result result = graphic_queue.submit(1u, &submit_info, in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("Failed to submit render command buffer!");
+            minilog::log_fatal("render: failed to submit render command buffer!");
         }
 
         vk::SwapchainKHR swap_chains[] = { swapchain };
@@ -1298,7 +1298,6 @@ private:
     void cleanup_swapchain() {
         for (auto& framebuffer : frame_buffers) { logical_device.destroy(framebuffer); }
         for (auto& imageview : swapchain_imageviews) { logical_device.destroy(imageview); }
-        // for (auto& image : swapchain_images) { logical_device.destroy(image); }
         logical_device.destroy(swapchain);
     }
 
@@ -1334,7 +1333,7 @@ private:
 
         vk::Rect2D render_area { .offset { .x = 0, .y = 0 }, .extent = swapchain_extent };
         vk::ClearValue clear_value { .color { std::array<float, 4uz>{ 0.2f, 0.3f, 0.3f, 1.0f } } };
-        vk::RenderPassBeginInfo render_pass_begin_info {
+        vk::RenderPassBeginInfo render_pass_bi {
             .pNext = nullptr,
             .renderPass = render_pass,
             .framebuffer = frame_buffers[imageIndex],
@@ -1342,7 +1341,7 @@ private:
             .clearValueCount = 1u,
             .pClearValues = &clear_value
         };
-        commandBuffer.beginRenderPass(&render_pass_begin_info, vk::SubpassContents::eInline); // render pass begin
+        commandBuffer.beginRenderPass(&render_pass_bi, vk::SubpassContents::eInline); // render pass begin
         vk::Viewport viewport {
             .x = 0.0f,
             .y = 0.0f,
@@ -1459,8 +1458,13 @@ private:
             glfw_required_instance_ext,
             glfw_required_instance_ext + glfw_required_instance_count
         );
-        if (ENABLE_VALIDATION_LAYER) { instance_extensions.push_back(vk::EXTDebugUtilsExtensionName); }
+        if (ENABLE_VALIDATION_LAYER) {
+            minilog::log_debug("ENABLE_VALIDATION_LAYER: true");
+            instance_extensions.push_back(vk::EXTDebugUtilsExtensionName);
+        }
 
+        // For debug
+        for (auto& ext : instance_extensions) { minilog::log_debug("instance extensions: {}", ext); }
         return instance_extensions;
     }
 
@@ -1723,6 +1727,9 @@ private:
 
 
 int main() {
+    minilog::set_log_level(minilog::log_level::trace); // default log level is 'info'
+    // minilog::set_log_file("./mini.log"); // dump log to a specific file
+
     ParticleSystem particle_system {};
 
     try {
