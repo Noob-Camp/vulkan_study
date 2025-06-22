@@ -1247,18 +1247,19 @@ private:
         command_buffers[current_frame].reset({});
         record_command_buffer(command_buffers[current_frame], image_index);
 
-        vk::Semaphore wait_semaphores[] = {
+        std::array<vk::Semaphore, 2uz> wait_semaphores = {
             compute_finished_semaphores[current_frame],
             image_available_semaphores[current_frame]
         };
-        vk::PipelineStageFlags wait_stages[] = {
+        std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
             vk::PipelineStageFlagBits::eVertexInput,
             vk::PipelineStageFlagBits::eColorAttachmentOutput
         };
+        submit_info = vk::SubmitInfo {};
         submit_info.pNext = nullptr;
-        submit_info.waitSemaphoreCount = 2u;
-        submit_info.pWaitSemaphores = wait_semaphores;
-        submit_info.pWaitDstStageMask = wait_stages;
+        submit_info.waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size());
+        submit_info.pWaitSemaphores = wait_semaphores.data();
+        submit_info.pWaitDstStageMask = wait_stages.data();
         submit_info.commandBufferCount = 1u;
         submit_info.pCommandBuffers = &command_buffers[current_frame];
         submit_info.signalSemaphoreCount = 1u;
@@ -1350,10 +1351,7 @@ private:
             .minDepth = 0.0f,
             .maxDepth = 1.0f
         };
-        vk::Rect2D scissor {
-            .offset { .x = 0, .y = 0 },
-            .extent = swapchain_extent
-        };
+        vk::Rect2D scissor { .offset { .x = 0, .y = 0 }, .extent = swapchain_extent };
         vk::DeviceSize offsets[] = { 0u };
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
