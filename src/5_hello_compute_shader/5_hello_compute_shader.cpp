@@ -66,12 +66,12 @@ std::vector<char> read_shader_file(const std::string& fileName) {
 
 class HelloComputeShader {
 private:
-    vk::Instance instance { nullptr };
-    bool validation_layers_supported { false };
-    vk::DebugUtilsMessengerEXT debug_utils_messenger { nullptr };
+    vk::Instance instance;
+    bool validation_layers_supported;
+    vk::DebugUtilsMessengerEXT debug_utils_messenger;
 
-    vk::PhysicalDevice physical_device { nullptr };
-    vk::Device logical_device { nullptr };
+    vk::PhysicalDevice physical_device;
+    vk::Device logical_device;
     vk::Queue compute_queue;
     std::optional<std::uint32_t> compute_queue_family_index;
 
@@ -280,6 +280,7 @@ public:
 
     void create_storage_buffer() {
         vk::BufferCreateInfo buffer_ci {
+            .pNext = nullptr,
             .flags = {},
             .size = sizeof(input_data),
             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
@@ -287,7 +288,6 @@ public:
             .queueFamilyIndexCount = 0u,
             .pQueueFamilyIndices = nullptr
         };
-
         if (
             vk::Result result = logical_device.createBuffer(&buffer_ci, nullptr, &storage_buffer);
             result != vk::Result::eSuccess
@@ -298,13 +298,12 @@ public:
         vk::MemoryRequirements memory_requirements = logical_device.getBufferMemoryRequirements(storage_buffer);
         vk::MemoryAllocateInfo memory_ai {
             .allocationSize = memory_requirements.size,
-            .memoryTypeIndex = _find_memory_type(
+            .memoryTypeIndex = find_memory_type(
                 memory_requirements,
                 vk::MemoryPropertyFlagBits::eHostVisible
                 | vk::MemoryPropertyFlagBits::eHostCoherent
             )
         };
-
         if (
             vk::Result result = logical_device.allocateMemory(&memory_ai, nullptr, &storage_buffer_memory);
             result != vk::Result::eSuccess
@@ -332,14 +331,12 @@ public:
             .type = vk::DescriptorType::eStorageBuffer,
             .descriptorCount = 1u
         };
-
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
             .flags = {},
             .maxSets = 1u,
             .poolSizeCount = 1u,
             .pPoolSizes = &descriptor_pool_size
         };
-
         if (
             vk::Result result = logical_device.createDescriptorPool(&descriptor_pool_ci, nullptr, &descriptor_pool);
             result != vk::Result::eSuccess
@@ -356,13 +353,11 @@ public:
             .stageFlags = vk::ShaderStageFlagBits::eCompute,
             .pImmutableSamplers = nullptr
         };
-
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
             .flags = {},
             .bindingCount = 1u,
             .pBindings = &descriptor_set_layout_binding
         };
-
         if (
             vk::Result result = logical_device.createDescriptorSetLayout(
                 &descriptor_set_layout_ci, nullptr, &descriptor_set_layout
@@ -391,7 +386,6 @@ public:
             .offset = 0u,
             .range = sizeof(input_data)
         };
-
         vk::WriteDescriptorSet write_descriptor_set {
             .dstSet = descriptor_set,
             .dstBinding = 0u,
@@ -410,6 +404,7 @@ public:
         std::vector<char> compute_shader_code = read_shader_file("./src/5_hello_compute_shader/shaders/5_hello_compute_shader.spv");
         vk::ShaderModule compute_shader_module = create_shader_module(compute_shader_code);
         vk::PipelineShaderStageCreateInfo pipeline_shader_stage_ci {
+            .pNext = nullptr,
             .flags = {},
             .stage = vk::ShaderStageFlagBits::eCompute,
             .module = compute_shader_module,
@@ -418,6 +413,7 @@ public:
         };
 
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .pNext = nullptr,
             .flags = {},
             .setLayoutCount = 1u,
             .pSetLayouts = &descriptor_set_layout,
@@ -427,11 +423,12 @@ public:
         compute_pipeline_layout = logical_device.createPipelineLayout(pipeline_layout_ci);
 
         vk::ComputePipelineCreateInfo compute_pipeline_ci {
+            .pNext = nullptr,
             .flags = {},
             .stage = pipeline_shader_stage_ci,
             .layout = compute_pipeline_layout,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = -1
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = 0
         };
         if (
             vk::Result result = logical_device.createComputePipelines(
@@ -447,10 +444,10 @@ public:
 
     void create_command_pool() {
         vk::CommandPoolCreateInfo command_pool_ci {
+            .pNext = nullptr,
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
             .queueFamilyIndex = compute_queue_family_index.value()
         };
-
         if (
             vk::Result result = logical_device.createCommandPool(&command_pool_ci, nullptr, &command_pool);
             result != vk::Result::eSuccess
@@ -481,9 +478,9 @@ public:
         }
         std::cout << '\n';
 
-        vk::CommandBufferBeginInfo command_buffer_begin_info {};
+        vk::CommandBufferBeginInfo command_buffer_bi {};
         if (
-            vk::Result result = command_buffer.begin(&command_buffer_begin_info);
+            vk::Result result = command_buffer.begin(&command_buffer_bi);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("command buffer failed to begin!");
@@ -503,13 +500,19 @@ public:
         command_buffer.end();
 
         vk::SubmitInfo submit_info {
+            .pNext = nullptr,
             .waitSemaphoreCount = 0u,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
             .commandBufferCount = 1u,
             .pCommandBuffers = &command_buffer,
-            .signalSemaphoreCount = 0u
+            .signalSemaphoreCount = 0u,
+            .pSignalSemaphores = nullptr
         };
-
-        if (compute_queue.submit(1u, &submit_info, VK_NULL_HANDLE) != vk::Result::eSuccess) {
+        if (
+            vk::Result result = compute_queue.submit(1u, &submit_info, nullptr);
+            result != vk::Result::eSuccess
+        ) {
             minilog::log_fatal("Failed to submit command buffer!");
         }
         compute_queue.waitIdle(); // wait the calculation to finish
@@ -526,8 +529,7 @@ public:
         std::cout << '\n';
     }
 
-private:
-    std::uint32_t _find_memory_type(
+    std::uint32_t find_memory_type(
         const vk::MemoryRequirements& memory_requirements,
         vk::MemoryPropertyFlags memory_properties
     ) {
