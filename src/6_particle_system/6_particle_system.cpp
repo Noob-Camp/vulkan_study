@@ -1245,14 +1245,14 @@ private:
         }
 
         render_command_buffers[current_frame].reset({});
-        record_command_buffer(render_command_buffers[current_frame], image_index);
+        record_render_command_buffer(render_command_buffers[current_frame], image_index);
 
         std::array<vk::Semaphore, 2uz> wait_semaphores = {
             compute_finished_semaphores[current_frame],
             image_available_semaphores[current_frame]
         };
         std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
-            vk::PipelineStageFlagBits::eVertexInput,
+            vk::PipelineStageFlagBits::eComputeShader,
             vk::PipelineStageFlagBits::eColorAttachmentOutput
         };
         submit_info = vk::SubmitInfo {};
@@ -1319,7 +1319,7 @@ private:
         create_frame_buffers();
     }
 
-    void record_command_buffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex) {
+    void record_render_command_buffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex) {
         vk::CommandBufferBeginInfo command_buffer_bi {
             .pNext = nullptr,
             .flags = {},
