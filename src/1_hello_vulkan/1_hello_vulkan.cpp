@@ -19,6 +19,9 @@ void create_instance(); // create VkInstance for Vulkan
 
 
 int main() {
+    minilog::set_log_level(minilog::log_level::trace); // default log level is 'info'
+    // minilog::set_log_file("./mini.log"); // dump log to a specific file
+
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -34,26 +37,21 @@ int main() {
     );
     auto v = mat * vec;
 
-    std::cout << "vec = " << "("
-              << vec.x << ", "
-              << vec.y << ", "
-              << vec.z << ", "
-              << vec.w << ")"
-              << std::endl;
-
-    std::cout << "mat = \n" << "["
-              << mat[0][0] << ", " << mat[0][1] << ", " << mat[0][2] << ", " << mat[0][3] << ", \n"
-              << mat[1][0] << ", " << mat[1][1] << ", " << mat[1][2] << ", " << mat[1][3] << ", \n"
-              << mat[2][0] << ", " << mat[2][1] << ", " << mat[2][2] << ", " << mat[2][3] << ", \n"
-              << mat[3][0] << ", " << mat[3][1] << ", " << mat[3][2] << ", " << mat[3][3] << "]"
-              << std::endl;
-
-    std::cout << "v = mat * vec = " << "("
-              << v.x << ", "
-              << v.y << ", "
-              << v.z << ", "
-              << v.w << ")"
-              << std::endl;
+    minilog::log_debug(
+        "vec = ({}, {}, {}, {})",
+        vec.x, vec.y, vec.z, vec.w
+    );
+    minilog::log_debug(
+        "mat = [{}, {}, {}, {},\n {}, {}, {}, {},\n {}, {}, {}, {},\n {}, {}, {}, {},\n]",
+        mat[0][0], mat[0][1], mat[0][2], mat[0][3],
+        mat[1][0], mat[1][1], mat[1][2], mat[1][3],
+        mat[2][0], mat[2][1], mat[2][2], mat[2][3],
+        mat[3][0], mat[3][1], mat[3][2], mat[3][3]
+    );
+    minilog::log_debug(
+        "v = mat * vec = ({}, {}, {}, {})",
+        v.x, v.y, v.z, v.w
+    );
 
     // Test Vulkan API
     create_instance();
