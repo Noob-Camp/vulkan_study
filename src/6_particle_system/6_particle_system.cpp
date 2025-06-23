@@ -477,14 +477,14 @@ private:
 
     void allocate_command_buffers() {
         render_command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        vk::CommandBufferAllocateInfo allocInfo {
+        vk::CommandBufferAllocateInfo command_buffer_ai {
             .pNext = nullptr,
             .commandPool = command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = static_cast<std::uint32_t>(render_command_buffers.size())
         };
         if (
-            vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, render_command_buffers.data());
+            vk::Result result = logical_device.allocateCommandBuffers(&command_buffer_ai, render_command_buffers.data());
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to allocate command buffers!");
