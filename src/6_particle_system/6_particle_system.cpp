@@ -173,6 +173,7 @@ private:
     std::vector<vk::Fence> render_in_flight_fences;
     std::vector<vk::Fence> compute_in_flight_fences;
     std::uint32_t current_frame { 0u };
+
     bool framebuffer_resized { false };
     float last_frame_time { 0.0f };
     double last_time { 0.0 };
@@ -267,7 +268,7 @@ private:
         create_logical_device();
 
         create_command_pool();
-        allocate_command_buffers();
+        allocate_render_command_buffers();
         allocate_compute_command_buffers();
 
         create_swapchain();
@@ -461,7 +462,6 @@ private:
 
     void create_command_pool() {
         QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
-
         vk::CommandPoolCreateInfo command_pool_ci {
             .pNext = nullptr,
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
@@ -475,7 +475,7 @@ private:
         }
     }
 
-    void allocate_command_buffers() {
+    void allocate_render_command_buffers() {
         render_command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo command_buffer_ai {
             .pNext = nullptr,
