@@ -1178,7 +1178,7 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("compute: waitForFences failed!");
+            minilog::log_debug("compute: wait for vk::Fence failed!");
         }
 
         update_uniform_buffer(current_frame);
@@ -1187,7 +1187,7 @@ private:
             vk::Result result = logical_device.resetFences(1u, &compute_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("compute: resetFences failed!");
+            minilog::log_debug("compute: reset vk::Fence failed!");
         }
 
         compute_command_buffers[current_frame].reset({});
@@ -1217,7 +1217,7 @@ private:
             );
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("render: waitForFences failed!");
+            minilog::log_debug("render: wait for vk::Fence failed!");
         }
 
         std::uint32_t image_index { 0u };
@@ -1241,7 +1241,7 @@ private:
             vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
-            minilog::log_debug("render: resetFences failed!");
+            minilog::log_debug("render: reset vk::Fence failed!");
         }
 
         command_buffers[current_frame].reset({});
@@ -1320,13 +1320,13 @@ private:
     }
 
     void record_command_buffer(vk::CommandBuffer commandBuffer, std::uint32_t imageIndex) {
-        vk::CommandBufferBeginInfo command_buffer_begin_info {
+        vk::CommandBufferBeginInfo command_buffer_bi {
             .pNext = nullptr,
             .flags = {},
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = commandBuffer.begin(&command_buffer_begin_info); // command buffer begin
+            vk::Result result = commandBuffer.begin(&command_buffer_bi); // command buffer begin
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to begin recording command buffer!");
@@ -1613,13 +1613,13 @@ private:
             minilog::log_fatal("begin_single_time_commands: failed to allocate vk::CommandBuffer!");
         }
 
-        vk::CommandBufferBeginInfo command_buffer_begin_info {
+        vk::CommandBufferBeginInfo command_buffer_bi {
             .pNext = nullptr,
             .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
             .pInheritanceInfo = nullptr
         };
         if (
-            vk::Result result = command_buffer.begin(&command_buffer_begin_info);
+            vk::Result result = command_buffer.begin(&command_buffer_bi);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("begin_single_time_commands: command buffer failed to begin!");
