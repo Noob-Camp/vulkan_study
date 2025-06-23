@@ -28,11 +28,11 @@
 #include <cstddef> // offsetof
 #include <random>
 
-// #ifdef NDEBUG
-//     constexpr bool ENABLE_VALIDATION_LAYER { false };
-// #else
+#ifdef NDEBUG
+    constexpr bool ENABLE_VALIDATION_LAYER { false };
+#else
     constexpr bool ENABLE_VALIDATION_LAYER { true };
-// #endif
+#endif
 
 using namespace std::literals::string_literals;
 
@@ -503,7 +503,7 @@ private:
             vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, compute_command_buffers.data());
             result != vk::Result::eSuccess
         ) {
-            minilog::log_fatal("Failed to allocate command buffers!");
+            minilog::log_fatal("Failed to allocate compute command buffers!");
         }
     }
 
