@@ -139,7 +139,7 @@ private:
     vk::Queue present_queue;
 
     vk::CommandPool command_pool;
-    std::vector<vk::CommandBuffer> command_buffers;
+    std::vector<vk::CommandBuffer> render_command_buffers;
     std::vector<vk::CommandBuffer> compute_command_buffers;
 
     vk::SurfaceKHR surface;
@@ -170,7 +170,7 @@ private:
     std::vector<vk::Semaphore> image_available_semaphores;
     std::vector<vk::Semaphore> render_finished_semaphores;
     std::vector<vk::Semaphore> compute_finished_semaphores;
-    std::vector<vk::Fence> in_flight_fences;
+    std::vector<vk::Fence> render_in_flight_fences;
     std::vector<vk::Fence> compute_in_flight_fences;
     std::uint32_t current_frame { 0u };
     bool framebuffer_resized { false };
@@ -196,7 +196,7 @@ public:
             logical_device.destroy(render_finished_semaphores[i]);
             logical_device.destroy(image_available_semaphores[i]);
             logical_device.destroy(compute_finished_semaphores[i]);
-            logical_device.destroy(in_flight_fences[i]);
+            logical_device.destroy(render_in_flight_fences[i]);
             logical_device.destroy(compute_in_flight_fences[i]);
         }
         logical_device.destroy(descriptor_pool);
@@ -476,15 +476,15 @@ private:
     }
 
     void allocate_command_buffers() {
-        command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        render_command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo allocInfo {
             .pNext = nullptr,
             .commandPool = command_pool,
             .level = vk::CommandBufferLevel::ePrimary,
-            .commandBufferCount = static_cast<std::uint32_t>(command_buffers.size())
+            .commandBufferCount = static_cast<std::uint32_t>(render_command_buffers.size())
         };
         if (
-            vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, command_buffers.data());
+            vk::Result result = logical_device.allocateCommandBuffers(&allocInfo, render_command_buffers.data());
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to allocate command buffers!");
@@ -1141,7 +1141,7 @@ private:
         image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
         render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
         compute_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+        render_in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
         compute_in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
         vk::SemaphoreCreateInfo semaphore_ci {
@@ -1156,7 +1156,7 @@ private:
             if (
                 logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
                 || logical_device.createSemaphore(&semaphore_ci, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
-                || logical_device.createFence(&fence_ci, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
+                || logical_device.createFence(&fence_ci, nullptr, &render_in_flight_fences[i]) != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("Failed to create render synchronization objects for a frame!");
             }
@@ -1213,7 +1213,7 @@ private:
         // Render submission
         if (
             vk::Result result = logical_device.waitForFences(
-                1u, &in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
+                1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
             );
             result != vk::Result::eSuccess
         ) {
@@ -1238,14 +1238,14 @@ private:
         }
 
         if (
-            vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
+            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_debug("render: reset vk::Fence failed!");
         }
 
-        command_buffers[current_frame].reset({});
-        record_command_buffer(command_buffers[current_frame], image_index);
+        render_command_buffers[current_frame].reset({});
+        record_command_buffer(render_command_buffers[current_frame], image_index);
 
         std::array<vk::Semaphore, 2uz> wait_semaphores = {
             compute_finished_semaphores[current_frame],
@@ -1261,11 +1261,11 @@ private:
         submit_info.pWaitSemaphores = wait_semaphores.data();
         submit_info.pWaitDstStageMask = wait_stages.data();
         submit_info.commandBufferCount = 1u;
-        submit_info.pCommandBuffers = &command_buffers[current_frame];
+        submit_info.pCommandBuffers = &render_command_buffers[current_frame];
         submit_info.signalSemaphoreCount = 1u;
         submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
         if (
-            vk::Result result = graphic_queue.submit(1u, &submit_info, in_flight_fences[current_frame]);
+            vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("render: failed to submit render command buffer!");
