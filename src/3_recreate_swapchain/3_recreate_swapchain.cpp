@@ -1413,6 +1413,13 @@ private:
             minilog::log_debug("waitForFences failed!");
         }
 
+        if (
+            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("resetFences failed!");
+        }
+
         std::uint32_t image_index { 0u };
         if (
             vk::Result result = logical_device.acquireNextImageKHR(
@@ -1431,14 +1438,6 @@ private:
         }
 
         update_uniform_buffer(current_frame);
-
-        if (
-            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_debug("resetFences failed!");
-        }
-
         command_buffers[current_frame].reset({});
         record_command_buffer(command_buffers[current_frame], image_index);
 
