@@ -1446,7 +1446,7 @@ private:
         std::array<vk::PipelineStageFlags, 1uz> wait_stages = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
         std::array<vk::CommandBuffer, 1uz> cmd_buffers = { command_buffers[current_frame] };
         std::array<vk::Semaphore, 1uz> signal_semaphores = { render_finished_semaphores[current_frame] };
-        vk::SubmitInfo submitInfo {
+        vk::SubmitInfo submit_info {
             .pNext = nullptr,
             .waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size()),
             .pWaitSemaphores = wait_semaphores.data(),
@@ -1458,19 +1458,19 @@ private:
         };
         // vkQueueSubmit() return immediately: the waiting only happens on the GPU
         if (
-            vk::Result result = graphic_queue.submit(1u, &submitInfo, render_in_flight_fences[current_frame]);
+            vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to submit draw command buffer!");
         }
 
-        vk::SwapchainKHR swap_chains[] = { swapchain };
+        std::array<vk::SwapchainKHR, 1uz> swap_chains = swapchain;
         vk::PresentInfoKHR present_info {
             .pNext = nullptr,
-            .waitSemaphoreCount = 1u,
+            .waitSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
             .pWaitSemaphores = signal_semaphores,
-            .swapchainCount = 1u,
-            .pSwapchains = swap_chains,
+            .swapchainCount = static_cast<std::uint32_t>(swap_chains.size()),
+            .pSwapchains = swap_chains.data(),
             .pImageIndices = &image_index,
             .pResults = nullptr
         };
