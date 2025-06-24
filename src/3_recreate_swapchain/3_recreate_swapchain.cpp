@@ -163,7 +163,7 @@ private:
     vk::SwapchainKHR swapchain;
     vk::Format swapchain_image_format;
     vk::Extent2D swapchain_extent;
-    std::vector<vk::Image> swapchain_images;
+    std::vector<vk::Image> swapchain_images; // used as frame buffers
     std::vector<vk::ImageView> swapchain_imageviews;
     std::vector<vk::Framebuffer> frame_buffers;
 
@@ -197,9 +197,15 @@ private:
     vk::DescriptorPool descriptor_pool;
     std::vector<vk::DescriptorSet> descriptor_sets;
 
+    // Binary semaphore
+    // A semaphore is used to add order between queue operations
+    // Queue operations refer to the work we submit to a queue,
+    //   either in a command buffer or from within a function
+    // Semaphores are used both to order work inside the same queue and between different queues
     std::vector<vk::Semaphore> image_available_semaphores;
     std::vector<vk::Semaphore> render_finished_semaphores;
-    std::vector<vk::Fence> in_flight_fences;
+    // vk::Fence, ordering the execution on the CPU
+    std::vector<vk::Fence> render_in_flight_fences;
     std::uint32_t current_frame { 0u };
     bool framebuffer_resized { false };
 
@@ -217,10 +223,13 @@ public:
     {}
 
     ~Application() {
+        // Delete the framebuffers before the image views and render pass that they are based on
+        cleanup_swapchain();
+
         // for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         //     logical_device.destroy(render_finished_semaphores[i]);
         //     logical_device.destroy(image_available_semaphores[i]);
-        //     logical_device.destroy(in_flight_fences[i]);
+        //     logical_device.destroy(render_in_flight_fences[i]);
         // }
         logical_device.destroy(descriptor_pool);
         logical_device.destroy(render_pipeline);;
@@ -239,7 +248,7 @@ public:
         logical_device.destroy(texture_imageview);
         logical_device.freeMemory(texture_device_memory);
         logical_device.destroy(texture_image);
-        // cleanup_swapchain();
+
         logical_device.destroy(command_pool);
         logical_device.destroy();
 
@@ -357,6 +366,7 @@ private:
         );
 
         vk::ApplicationInfo application_info {
+            .pNext = nullptr,
             .pApplicationName = "ReCreate the Swap Chain",
             .applicationVersion = support_vulkan_version,
             .pEngineName = "No Engine",
@@ -382,6 +392,7 @@ private:
             instance_ci.ppEnabledLayerNames = VALIDATION_LAYERS.data();
         }
 
+        // A lot of information in Vulkan is passed through structs instead of function parameters
         if (
             vk::Result result = vk::createInstance(&instance_ci, nullptr, &instance);
             result != vk::Result::eSuccess
@@ -485,11 +496,14 @@ private:
     }
 
     void create_command_pool() {
+        // Command pools manage the memory that is used to store the buffers and command buffers are allocated from them
         QueueFamilyIndex queue_family_index = find_queue_families(physical_device);
-
         vk::CommandPoolCreateInfo command_pool_ci {
             .pNext = nullptr,
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            // Command buffers are executed by submitting them on one of the device queues,
+            //   like the graphics and presentation queues we retrieved
+            // Each command pool can only allocate command buffers that are submitted on a single type of queue
             .queueFamilyIndex = queue_family_index.graphic.value()
         };
         if (
@@ -501,6 +515,14 @@ private:
     }
 
     void allocate_command_buffers() {
+        // Commands in Vulkan, like drawing operations and memory transfers,
+        //   are not executed directly using function calls
+        // You have to record all of the operations you want to perform in command buffer objects
+        // The advantage of this is that when we are ready to tell the Vulkan what we want to do,
+        //   all of the commands are submitted together and
+        //   Vulkan can more efficiently process the commands since all of them are available together
+        // In addition, this allows command recording to happen in multiple threads if so desired
+        // Command buffers will be automatically freed when their command pool is destroyed
         command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         vk::CommandBufferAllocateInfo allocInfo {
             .pNext = nullptr,
@@ -565,6 +587,8 @@ private:
             minilog::log_fatal("Failed to create vk::SwapchainCreateInfoKHR!");
         }
 
+        // The images were created by the implementation for the swap chain
+        //   and they will be automatically cleaned up once the swap chain has been destroyed
         swapchain_images = logical_device.getSwapchainImagesKHR(swapchain);
         swapchain_image_format = swapchain_ci.imageFormat;
         swapchain_extent = swapchain_ci.imageExtent;
@@ -890,6 +914,11 @@ private:
     }
 
     void create_render_pass() {
+        // Before we can finish creating the pipeline,
+        //   we need to tell Vulkan about the framebuffer attachments that will be used while rendering
+        // We need to specify how many color and depth buffers there will be,
+        //   how many samples to use for each of them and
+        //   how their contents should be handled throughout the rendering operations
         vk::AttachmentDescription attachment_desc_color {
             .flags = {},
             .format = swapchain_image_format,
@@ -1079,6 +1108,7 @@ private:
                 .offset = offsetof(Vertex, uv)
             }
         };
+        // Describes the format of the vertex data that will be passed to the vertex shader
         vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci {
             .pNext = nullptr,
             .flags = {},
@@ -1088,6 +1118,9 @@ private:
             .pVertexAttributeDescriptions = vertex_input_attribute_descs.data()
         };
 
+        // Describes two things:
+        //   what kind of geometry will be drawn from the vertices and
+        //   if primitive restart should be enabled
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci {
             .pNext = nullptr,
             .flags = {},
@@ -1101,6 +1134,7 @@ private:
             .patchControlPoints = 0u
         };
 
+        // Describes the region of the framebuffer that the output will be rendered to
         vk::Viewport viewport {
             .x = 0.0f,
             .y = 0.0f,
@@ -1109,6 +1143,8 @@ private:
             .minDepth = 0.0f,
             .maxDepth = 1.0f
         };
+        // Define in which regions pixels will actually be stored
+        // Any pixels outside the scissor rectangles will be discarded by the rasterizer
         vk::Rect2D scissor {
             .offset { .x = 0u, .y = 0u },
             .extent = swapchain_extent
@@ -1161,6 +1197,9 @@ private:
             .maxDepthBounds = 1.0f
         };
 
+        // color blending
+        // After a fragment shader has returned a color,
+        //   it needs to be combined with the color that is already in the framebuffer
         vk::PipelineColorBlendAttachmentState color_blend_attachment_state {
             .blendEnable = vk::False,
             .srcColorBlendFactor = vk::BlendFactor::eZero,
@@ -1337,7 +1376,7 @@ private:
     void create_sync_objects() {
         image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
         render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+        render_in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
         vk::SemaphoreCreateInfo semaphore_ci {
             .pNext = nullptr,
@@ -1351,7 +1390,7 @@ private:
             if (
                 logical_device.createSemaphore(&semaphore_ci, nullptr, &image_available_semaphores[i]) != vk::Result::eSuccess
                 || logical_device.createSemaphore(&semaphore_ci, nullptr, &render_finished_semaphores[i]) != vk::Result::eSuccess
-                || logical_device.createFence(&fence_ci, nullptr, &in_flight_fences[i]) != vk::Result::eSuccess
+                || logical_device.createFence(&fence_ci, nullptr, &render_in_flight_fences[i]) != vk::Result::eSuccess
             ) {
                 minilog::log_fatal("Failed to create synchronization objects for a frame!");
             }
@@ -1359,9 +1398,15 @@ private:
     }
 
     void draw_frame() {
+        // 1. Wait for the previous frame to finish
+        // 2. Acquire an image from the swap chain
+        // 3. Record a command buffer which draws the scene onto that image
+        // 4. Submit the recorded command buffer
+        // 5. Present the swap chain image
+
         if (
             vk::Result result = logical_device.waitForFences(
-                1u, &in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
+                1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
             );
             result != vk::Result::eSuccess
         ) {
@@ -1388,7 +1433,7 @@ private:
         update_uniform_buffer(current_frame);
 
         if (
-            vk::Result result = logical_device.resetFences(1u, &in_flight_fences[current_frame]);
+            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_debug("resetFences failed!");
@@ -1397,21 +1442,23 @@ private:
         command_buffers[current_frame].reset({});
         record_command_buffer(command_buffers[current_frame], image_index);
 
-        vk::Semaphore wait_semaphores[] = { image_available_semaphores[current_frame] };
-        vk::PipelineStageFlags wait_stages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-        vk::Semaphore signal_semaphores[] = { render_finished_semaphores[current_frame] };
+        std::array<vk::Semaphore, 1uz> wait_semaphores = { image_available_semaphores[current_frame] };
+        std::array<vk::PipelineStageFlags, 1uz> wait_stages = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+        std::array<vk::CommandBuffer, 1uz> cmd_buffers = { command_buffers[current_frame] };
+        std::array<vk::Semaphore, 1uz> signal_semaphores = { render_finished_semaphores[current_frame] };
         vk::SubmitInfo submitInfo {
             .pNext = nullptr,
-            .waitSemaphoreCount = 1u,
-            .pWaitSemaphores = wait_semaphores,
-            .pWaitDstStageMask = wait_stages,
-            .commandBufferCount = 1u,
-            .pCommandBuffers = &command_buffers[current_frame],
-            .signalSemaphoreCount = 1u,
-            .pSignalSemaphores = signal_semaphores
+            .waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size()),
+            .pWaitSemaphores = wait_semaphores.data(),
+            .pWaitDstStageMask = wait_stages.data(),
+            .commandBufferCount = static_cast<std::uint32_t>(cmd_buffers.size()),
+            .pCommandBuffers = cmd_buffers.data(),
+            .signalSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
+            .pSignalSemaphores = signal_semaphores.data()
         };
+        // vkQueueSubmit() return immediately: the waiting only happens on the GPU
         if (
-            vk::Result result = graphic_queue.submit(1u, &submitInfo, in_flight_fences[current_frame]);
+            vk::Result result = graphic_queue.submit(1u, &submitInfo, render_in_flight_fences[current_frame]);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to submit draw command buffer!");
@@ -1739,6 +1786,7 @@ private:
     }
 
     vk::ShaderModule create_shader_module(const std::vector<char>& code) {
+        // Shader code in Vulkan has to be specified in a bytecode format: SPIR-V
         vk::ShaderModuleCreateInfo shader_module_ci {
             .flags = {},
             .codeSize = code.size(),

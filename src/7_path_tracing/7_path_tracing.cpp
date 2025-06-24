@@ -286,8 +286,8 @@ public:
         create_command_pool();
         create_command_buffer();
 
-        create_buffers();
         prepare_scene_data();
+        create_buffers();
 
         create_descriptor_pool();
         create_descriptor_set_layout();
