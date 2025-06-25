@@ -454,13 +454,15 @@ private:
             queue_family_index.present.value()
         };
 
-        float queue_priority { 1.0f }; // default
+        std::array<float, 1uz> queue_priorities = { 1.0f }; // default
         std::vector<vk::DeviceQueueCreateInfo> device_queue_cis;
         for (std::uint32_t queue_family : unique_queue_families) {
             vk::DeviceQueueCreateInfo device_queue_ci {
+                .pNext = nullptr,
+                .flags = {},
                 .queueFamilyIndex = queue_family,
-                .queueCount = 1u,
-                .pQueuePriorities = &queue_priority
+                .queueCount = static_cast<std::uint32_t>(queue_priorities.size()),
+                .pQueuePriorities = queue_priorities.data()
             };
             device_queue_cis.push_back(device_queue_ci);
         }
@@ -576,7 +578,7 @@ private:
         };
         if (queue_family_index.graphic != queue_family_index.present) {
             swapchain_ci.imageSharingMode = vk::SharingMode::eConcurrent;
-            swapchain_ci.queueFamilyIndexCount = 2u;
+            swapchain_ci.queueFamilyIndexCount = static_cast<std::uint32_t>(queue_family_indices.data());
             swapchain_ci.pQueueFamilyIndices = queue_family_indices.data();
         }
 
