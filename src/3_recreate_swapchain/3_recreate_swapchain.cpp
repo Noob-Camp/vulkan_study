@@ -580,7 +580,7 @@ private:
         };
         if (queue_family_index.graphic != queue_family_index.present) {
             swapchain_ci.imageSharingMode = vk::SharingMode::eConcurrent;
-            swapchain_ci.queueFamilyIndexCount = static_cast<std::uint32_t>(queue_family_indices.data());
+            swapchain_ci.queueFamilyIndexCount = static_cast<std::uint32_t>(queue_family_indices.size());
             swapchain_ci.pQueueFamilyIndices = queue_family_indices.data();
         }
 
@@ -1152,7 +1152,7 @@ private:
             .depthClampEnable = vk::False,
             .rasterizerDiscardEnable = vk::False,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eNone,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = vk::False,
             .depthBiasClamp = 0.0f,
@@ -1451,11 +1451,11 @@ private:
             minilog::log_fatal("Failed to submit draw command buffer!");
         }
 
-        std::array<vk::SwapchainKHR, 1uz> swap_chains = swapchain;
+        std::array<vk::SwapchainKHR, 1uz> swap_chains = { swapchain };
         vk::PresentInfoKHR present_info {
             .pNext = nullptr,
             .waitSemaphoreCount = static_cast<std::uint32_t>(signal_semaphores.size()),
-            .pWaitSemaphores = signal_semaphores,
+            .pWaitSemaphores = signal_semaphores.data(),
             .swapchainCount = static_cast<std::uint32_t>(swap_chains.size()),
             .pSwapchains = swap_chains.data(),
             .pImageIndices = &image_index,
