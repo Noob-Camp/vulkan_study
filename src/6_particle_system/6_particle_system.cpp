@@ -123,6 +123,8 @@ struct SwapChainSupportDetail {
 
 class ParticleSystem {
 private:
+    std::vector<Particle> particles;
+
     std::uint32_t width { 800u };
     std::uint32_t height { 600u };
     std::string window_name { "Recreate the Swap Chain"s };
@@ -179,17 +181,39 @@ private:
     double last_time { 0.0 };
 
 public:
-    ParticleSystem() = default;
+    ParticleSystem()
+        : width { 800 }
+        , height { 600 }
+        , window_name { "6_particle_system"s }
+    {
+        // Initialize particles
+        particles.resize(PARTICLE_COUNT);
+
+        std::default_random_engine rnd_engine((unsigned)time(nullptr));
+        std::uniform_real_distribution<float> rnd_dist(0.0f, 1.0f);
+        for (auto& particle : particles) {
+            // initialize particle positions on a circle
+            float r = 0.25f * std::sqrt(rnd_dist(rnd_engine));
+            float theta = rnd_dist(rnd_engine) * 2.0f * 3.1415926;
+            float x = r * std::cos(theta) * static_cast<float>(height) / static_cast<float>(width);
+            float y = r * std::sin(theta);
+            particle.position = glm::vec2(x, y);
+            particle.velocity = glm::normalize(glm::vec2(x, y)) * 0.00025f;
+            particle.color = glm::vec4(rnd_dist(rnd_engine), rnd_dist(rnd_engine), rnd_dist(rnd_engine), 1.0f);
+        }
+    };
 
     ParticleSystem(
         std::uint32_t _width,
         std::uint32_t _height,
-        const std::string& window_name
+        const std::string& _window_name
     )
-        : width { _width }
-        , height { _height }
-        , window_name { window_name }
-    {}
+        : ParticleSystem()
+    {
+        width = _width;
+        height = _height;
+        window_name = _window_name;
+    }
 
     ~ParticleSystem() {
         cleanup_swapchain();
@@ -207,9 +231,13 @@ public:
         logical_device.destroy(compute_pipeline);
         logical_device.destroy(compute_pipeline_layout);
         logical_device.destroy(compute_descriptor_set_layout);
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        for (std::size_t i { 0uz }; i < uniform_buffers.size(); ++i) {
             logical_device.destroy(uniform_buffers[i]);
             logical_device.freeMemory(uniform_device_memorys[i]);
+        }
+        for (std::size_t i { 0uz }; i < storage_buffers.size(); ++i) {
+            logical_device.destroy(storage_buffers[i]);
+            logical_device.freeMemory(storage_device_memorys[i]);
         }
         logical_device.destroy(command_pool);
 
@@ -592,23 +620,9 @@ private:
     }
 
     void create_storage_buffers() {
-        // Initialize particles
-        std::default_random_engine rnd_engine((unsigned)time(nullptr));
-        std::uniform_real_distribution<float> rnd_dist(0.0f, 1.0f);
-
-        // Initialize particle positions on a circle
-        std::vector<Particle> particles(PARTICLE_COUNT);
-        for (auto& particle : particles) {
-            float r = 0.25f * std::sqrt(rnd_dist(rnd_engine));
-            float theta = rnd_dist(rnd_engine) * 2.0f * 3.1415926;
-            float x = r * std::cos(theta) * static_cast<float>(height) / static_cast<float>(width);
-            float y = r * std::sin(theta);
-            particle.position = glm::vec2(x, y);
-            particle.velocity = glm::normalize(glm::vec2(x, y)) * 0.00025f;
-            particle.color = glm::vec4(rnd_dist(rnd_engine), rnd_dist(rnd_engine), rnd_dist(rnd_engine), 1.0f);
-        }
-
+        // vk::DeviceSize device_size = (2uz + 4uz) * 4uz * PARTICLE_COUNT;
         vk::DeviceSize device_size = sizeof(Particle) * PARTICLE_COUNT;
+
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
         create_buffer(

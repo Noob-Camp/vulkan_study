@@ -8,11 +8,11 @@ struct Particle {
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-layout(binding = 0) uniform ParameterUBO {
+layout(set = 0, binding = 0) uniform ParameterUBO {
     float delta_time;
 } ubo;
-layout(binding = 1, std140) readonly buffer ParticleSSBOIn { Particle in_particles[]; };
-layout(binding = 2, std140) buffer ParticleSSBOOut { Particle out_particles[]; };
+layout(set = 0, binding = 1, std140) readonly buffer ParticleSSBOIn { Particle in_particles[]; };
+layout(set = 0, binding = 2, std140) buffer ParticleSSBOOut { Particle out_particles[]; };
 
 
 void main() {
