@@ -1583,13 +1583,13 @@ private:
         }
 
         vk::MemoryRequirements memory_requirements = logical_device.getBufferMemoryRequirements(buffer);
-        vk::MemoryAllocateInfo memory_allocate_info {
+        vk::MemoryAllocateInfo memory_ai {
             .pNext = nullptr,
             .allocationSize = memory_requirements.size,
             .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties)
         };
         if (
-            vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
+            vk::Result result = logical_device.allocateMemory(&memory_ai, nullptr, &bufferMemory);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to allocate vk::BufferMemory!");

@@ -236,10 +236,10 @@ public:
         logical_device.destroy(render_pipeline_layout);
         logical_device.destroy(descriptor_set_layout);
         logical_device.destroy(render_pass);
-        // for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        //     logical_device.destroy(uniform_buffers[i]);
-        //     logical_device.freeMemory(uniform_device_memorys[i]);
-        // }
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            logical_device.destroy(uniform_buffers[i]);
+            logical_device.freeMemory(uniform_device_memorys[i]);
+        }
         logical_device.destroy(index_buffer);
         logical_device.freeMemory(index_device_memory);
         logical_device.destroy(vertex_buffer);
@@ -250,6 +250,8 @@ public:
         logical_device.destroy(texture_image);
 
         logical_device.destroy(command_pool);
+
+        logical_device.waitIdle();
         logical_device.destroy();
 
         if (ENABLE_VALIDATION_LAYER) {
@@ -712,22 +714,6 @@ private:
                 indices.push_back(unique_vertices[vertex]);
             }
         }
-
-        // For debug
-        for (const auto& i : vertices) {
-            minilog::log_debug(
-                "position: ({}, {}, {})",
-                i.position.x, i.position.y, i.position.z
-            );
-            minilog::log_debug(
-                "color: ({}, {}, {})",
-                i.color.x, i.color.y, i.color.z
-            );
-            minilog::log_debug(
-                "uv: ({}, {})",
-                i.uv.x, i.uv.y
-            );
-        }
     }
 
     void create_vertex_buffer() {
@@ -743,7 +729,7 @@ private:
             staging_buffer,
             staging_device_memory
         );
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size);
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size, {});
         memcpy(data, vertices.data(), static_cast<std::size_t>(vertex_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
@@ -775,7 +761,7 @@ private:
             staging_device_memory
         );
         void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {});
-        memcpy(data, vertices.data(), static_cast<std::size_t>(index_device_size));
+        memcpy(data, indices.data(), static_cast<std::size_t>(index_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
         create_buffer(
@@ -1550,9 +1536,9 @@ private:
         commandBuffer.beginRenderPass(&render_pass_bi, vk::SubpassContents::eInline); // render pass begin
         vk::Viewport viewport {
             .x = 0.0f,
-            .y = 0.0f,
+            .y = static_cast<float>(swapchain_extent.height),
             .width = static_cast<float>(swapchain_extent.width),
-            .height = static_cast<float>(swapchain_extent.height),
+            .height = -static_cast<float>(swapchain_extent.height),
             .minDepth = 0.0f,
             .maxDepth = 1.0f
         };
@@ -1560,12 +1546,12 @@ private:
             .offset { .x = 0, .y = 0 },
             .extent = swapchain_extent
         };
-        vk::Buffer vertex_buffers[] = { vertex_buffer };
+        std::array<vk::Buffer, 1uz> vertex_buffers = { vertex_buffer };
         vk::DeviceSize offsets[] = { 0u };
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
-        commandBuffer.bindVertexBuffers(0u, 1u, vertex_buffers, offsets);
+        commandBuffer.bindVertexBuffers(0u, 1u, vertex_buffers.data(), offsets);
         commandBuffer.bindIndexBuffer(index_buffer, 0u, vk::IndexType::eUint32);
         commandBuffer.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
@@ -1903,13 +1889,13 @@ private:
         }
 
         vk::MemoryRequirements memory_requirements = logical_device.getBufferMemoryRequirements(buffer);
-        vk::MemoryAllocateInfo memory_allocate_info {
+        vk::MemoryAllocateInfo memory_ai {
             .pNext = nullptr,
             .allocationSize = memory_requirements.size,
             .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties)
         };
         if (
-            vk::Result result = logical_device.allocateMemory(&memory_allocate_info, nullptr, &bufferMemory);
+            vk::Result result = logical_device.allocateMemory(&memory_ai, nullptr, &bufferMemory);
             result != vk::Result::eSuccess
         ) {
             minilog::log_fatal("Failed to allocate vk::BufferMemory!");
@@ -2230,7 +2216,7 @@ private:
                 10.0f
             )
         };
-        ubo.proj[1][1] *= -1.0f;
+        // ubo.proj[1][1] *= -1.0f; // reverse y-axis
 
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
     }
