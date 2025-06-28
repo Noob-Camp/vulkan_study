@@ -226,11 +226,11 @@ public:
         // Delete the framebuffers before the image views and render pass that they are based on
         cleanup_swapchain();
 
-        // for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        //     logical_device.destroy(render_finished_semaphores[i]);
-        //     logical_device.destroy(image_available_semaphores[i]);
-        //     logical_device.destroy(render_in_flight_fences[i]);
-        // }
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            logical_device.destroy(render_finished_semaphores[i]);
+            logical_device.destroy(image_available_semaphores[i]);
+            logical_device.destroy(render_in_flight_fences[i]);
+        }
         logical_device.destroy(descriptor_pool);
         logical_device.destroy(render_pipeline);;
         logical_device.destroy(render_pipeline_layout);
