@@ -1,0 +1,61 @@
+#version 450
+
+// std140 (uniform) / std430 (SSBO)
+// Align memory with a size of 4 bytes
+
+struct Particle {
+    vec2 position;
+    vec2 velocity;
+    vec4 color;
+};
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std140) uniform ParameterUBO { float delta_time; } ubo;
+
+layout(set = 0, binding = 1, std430) readonly buffer ParticleSSBOIn { Particle in_particles[]; };
+layout(set = 0, binding = 2, std430) buffer ParticleSSBOOut { Particle out_particles[]; };
+// layout(set = 0, binding = 3, rgba8) uniform image2D output_image; // RGBA8 格式的存储图像
+layout(set = 0, binding = 3, std430) buffer ImageOutputSSBO { vec4 pixel_colors[]; };
+layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; };
+
+const uvec2 screen_size = uvec2(1920, 1080);
+
+
+
+float lcg(uint state) {
+    state = 1664525u * state + 1013904223u;
+    return float(state & 0x00ffffffu) * (1.0f / float(0x01000000u));
+}
+
+uint tea(uint v0, uint v1) {
+    uint s0 = 0;
+    for (uint n = 0u; n < 4u; n++) {
+        s0 += 0x9e3779b9u;
+        v0 += ((v1 << 4) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
+        v1 += ((v0 << 4) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
+    }
+    return v0;
+}
+
+
+void main() {
+    uvec2 coord = gl_GlobalInvocationID.xy;
+    uint index = coord.x + coord.y * screen_size.x;
+    if (index > 1920u * 1080u) { return ; }
+
+    // random number
+    uint state = tea(coord.x, coord.y);
+    uint new_seed_x = 1664525u * state + 1013904223u;
+    uint new_seed_y = 1664525u * new_seed_x + 1013904223u;
+    float rx = float(new_seed_x & 0x00ffffffu) * (1.0f / float(0x01000000u));
+    float ry = float(new_seed_y & 0x00ffffffu) * (1.0f / float(0x01000000u));
+
+    // float r = float(coord.x) / float(screen_size.x);
+    // float g = float(screen_size.y - 1u - coord.y) / float(screen_size.y);
+    // float b = 0.2;
+    // pixel_colors[index] = vec4(r, g, b, 1.0f);
+    pixel_colors[index] = vec4(rx, rx, rx, 1.0f);
+    seed_buffer[index] = new_seed_y;
+}
