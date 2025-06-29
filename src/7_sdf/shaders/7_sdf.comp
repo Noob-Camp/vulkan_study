@@ -23,27 +23,32 @@ layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; };
 const uvec2 screen_size = uvec2(1920, 1080);
 
 
-
-float lcg(uint state) {
-    state = 1664525u * state + 1013904223u;
-    return float(state & 0x00ffffffu) * (1.0f / float(0x01000000u));
-}
-
 uint tea(uint v0, uint v1) {
-    uint s0 = 0;
+    uint s0 = 0u;
     for (uint n = 0u; n < 4u; n++) {
         s0 += 0x9e3779b9u;
-        v0 += ((v1 << 4) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
-        v1 += ((v0 << 4) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
+        v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
+        v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
     }
     return v0;
 }
+
+vec3 linear_to_srgb(vec3 x) {
+    vec3 srgb_result = mix(
+        1.055f * pow(x, vec3(1.0f / 2.4f)) - 0.055f,
+        12.92f * x,
+        lessThanEqual(x, vec3(0.00031308f))
+    );
+
+    return clamp(srgb_result, 0.0f, 1.0f);
+}
+
+
 
 
 void main() {
     uvec2 coord = gl_GlobalInvocationID.xy;
     uint index = coord.x + coord.y * screen_size.x;
-    if (index > 1920u * 1080u) { return ; }
 
     // random number
     uint state = tea(coord.x, coord.y);
@@ -56,6 +61,8 @@ void main() {
     // float g = float(screen_size.y - 1u - coord.y) / float(screen_size.y);
     // float b = 0.2;
     // pixel_colors[index] = vec4(r, g, b, 1.0f);
-    pixel_colors[index] = vec4(rx, rx, rx, 1.0f);
+    vec4 final_color = vec4(rx, rx, rx, 1.0f);
+    final_color.xyz = linear_to_srgb(clamp(final_color.xyz / final_color.w * 2.0f, 0.0f, 1.0f));
+    pixel_colors[index] = final_color;
     seed_buffer[index] = new_seed_y;
 }
