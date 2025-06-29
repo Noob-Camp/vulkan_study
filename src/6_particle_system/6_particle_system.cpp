@@ -125,9 +125,9 @@ class ParticleSystem {
 private:
     std::vector<Particle> particles;
 
-    std::uint32_t width { 800u };
-    std::uint32_t height { 600u };
-    std::string window_name { "Recreate the Swap Chain"s };
+    std::uint32_t width;
+    std::uint32_t height;
+    std::string window_name;
     GLFWwindow* glfw_window { nullptr };
 
     vk::Instance instance;
