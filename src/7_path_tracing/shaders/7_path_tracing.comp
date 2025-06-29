@@ -1,0 +1,115 @@
+#version 450
+
+// std140 (uniform) / std430 (SSBO)
+// Align memory with a size of 4 bytes
+
+
+struct Particle {
+    vec2 position;
+    vec2 velocity;
+    vec4 color;
+};
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std140) uniform ParameterUBO {
+    float delta_time;
+} ubo;
+layout(set = 0, binding = 1, std430) readonly buffer ParticleSSBOIn { Particle in_particles[]; };
+layout(set = 0, binding = 2, std430) buffer ParticleSSBOOut { Particle out_particles[]; };
+// layout(set = 0, binding = 3, rgba8) uniform image2D output_image; // RGBA8 格式的存储图像
+layout(set = 0, binding = 3, std430) buffer ImageOutputSSBO {
+    vec4 pixel_colors[];
+} output_pixel_buffer;
+
+const vec2 screen_size = vec2(800, 600);
+const int num_partices = 8192;
+const float PARTICLE_RADIUS = 0.05f; // 粒子半径，根据需要调整
+const float SOFT_EDGE_WIDTH = 0.005f; // 用于平滑粒子边缘
+
+
+
+void update_particle(uint index) {
+    if (index >= num_partices) { return; }
+
+    Particle in_particle = in_particles[index];
+    out_particles[index].position = in_particle.position
+        + in_particle.velocity.xy * ubo.delta_time;
+    out_particles[index].velocity = in_particle.velocity;
+
+    if (
+        (out_particles[index].position.x <= -1.0f)
+        || (out_particles[index].position.x >= 1.0f)
+    ) {
+        out_particles[index].velocity.x = -out_particles[index].velocity.x;
+    }
+
+    if (
+        (out_particles[index].position.y <= -1.0f)
+        || (out_particles[index].position.y >= 1.0f)
+    ) {
+        out_particles[index].velocity.y = -out_particles[index].velocity.y;
+    }
+}
+
+// --- 2D 距离场函数 (返回点到最近粒子的有符号距离) ---
+float sdf_particles(vec2 p) {
+    float min_dist = 1e10; // 很大的初始距离
+    for (int i = 0; i < num_partices; ++i) {
+        vec2 particle_pos = out_particles[i].position; // 使用当前帧（输入）的粒子位置进行渲染
+        float dist_to_center = length(p - particle_pos);
+        float signed_distance = dist_to_center - PARTICLE_RADIUS;
+        min_dist = min(min_dist, signed_distance);
+    }
+
+    return min_dist;
+}
+
+// --- 获取粒子颜色 (返回最近粒子的颜色) ---
+vec4 get_particle_color(vec2 p) {
+    vec4 final_color = vec4(0.0);
+    float min_dist_sq = 1e10; // 最小距离的平方
+
+    for (int i = 0; i < num_partices; ++i) {
+        vec2 particle_pos = out_particles[i].position;
+        float dist_sq = dot(p - particle_pos, p - particle_pos); // 距离平方更高效
+
+        if (dist_sq < min_dist_sq) {
+            min_dist_sq = dist_sq;
+            final_color = out_particles[i].color;
+        }
+    }
+    return final_color;
+}
+
+
+void main() {
+    // Part 1: 粒子更新 (在一个线程处理一个粒子)
+    // 确保你的 dispatch size 能够覆盖所有粒子，
+    // 例如，dispatch size.x = (num_particles + local_size_x - 1) / local_size_x
+    uint particle_index = gl_GlobalInvocationID.x;
+    update_particle(particle_index);
+
+    // Part 2: 2D 粒子渲染 (在一个线程处理一个像素)
+    // 假设渲染的分辨率与 dispatch 的总大小相匹配
+    // 例如，dispatch size.x = screen_res.x / local_size_x, dispatch size.y = screen_res.y / local_size_y
+    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy); // 当前像素坐标 (0,0) 到 (res.x-1, res.y-1)
+    if ((pixel_coords.x >= screen_size.x) || (pixel_coords.y >= screen_size.y)) { return; }
+
+    // 将像素坐标转换为 NDC (Normalized Device Coordinates) [-1, 1] 范围
+    vec2 uv = (vec2(pixel_coords) + 0.5f) / screen_size; // 0..1 范围
+    vec2 world_pos = uv * 2.0f - 1.0f;                       // -1..1 范围
+    float dist = sdf_particles(world_pos); // 计算当前像素点到最近粒子的 SDF
+
+    vec4 final_pixel_color = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (dist < SOFT_EDGE_WIDTH) { // 如果在粒子内部或靠近边缘
+        vec4 particle_base_color = get_particle_color(world_pos); // 获取该位置最近的粒子颜色
+        // 使用 smoothstep 创建平滑的圆形边缘
+        float alpha = 1.0f - smoothstep(0.0f, SOFT_EDGE_WIDTH, dist);
+        final_pixel_color = vec4(particle_base_color.rgb, alpha);
+    }
+
+    // imageStore(output_image, pixel_coords, final_pixel_color); // 将计算出的颜色写入输出图像
+    uint output_index = uint(pixel_coords.y) * uint(screen_size.x) + uint(pixel_coords.x);
+    output_pixel_buffer.pixel_colors[output_index] = final_pixel_color;
+}

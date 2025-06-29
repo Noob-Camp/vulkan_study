@@ -6,4 +6,8 @@ target_include_directories(
     ${Vulkan_INCLUDE_DIRS}
 )
 
-target_link_libraries(7_path_tracing PUBLIC ${Vulkan_LIBRARIES})
+target_link_libraries(
+    7_path_tracing PUBLIC
+    glfw
+    ${Vulkan_LIBRARIES}
+)
