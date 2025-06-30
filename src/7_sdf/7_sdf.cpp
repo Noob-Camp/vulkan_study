@@ -193,6 +193,7 @@ private:
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
     vk::RenderPass render_pass;
+    vk::DescriptorSetLayout render_descriptor_set_layout;
     vk::PipelineLayout render_pipeline_layout;
     vk::Pipeline render_pipeline;
 
@@ -340,6 +341,7 @@ private:
         create_storage_buffers();
 
         create_render_pass();
+        create_render_descriptor_set_layout();
         create_graphic_pipeline();
         create_compute_descriptor_set_layout();
         create_compute_pipeline();
@@ -684,7 +686,7 @@ private:
         std::vector<tinyobj::material_t> materials;
         std::string warn { ""s };
         std::string err { ""s };
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "./resource/square.obj")) {
             minilog::log_fatal("{}", warn + err);
         }
 
@@ -698,10 +700,10 @@ private:
                         attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
                     },
                     .color = { 1.0f, 1.0f, 1.0f },
-                    .uv = {
-                        attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
-                        1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
-                    }
+                    // .uv = {
+                    //     attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
+                    //     1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
+                    // }
                 };
                 if (unique_vertices.count(vertex) == 0) {
                     unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
@@ -725,6 +727,14 @@ private:
     }
 
     void create_vertex_buffer() {
+        for (auto& vertex : vertices) {
+            minilog::log_debug(
+                "position: {}, {}, {}",
+                vertex.position.x,
+                vertex.position.y,
+                vertex.position.z
+            );
+        }
         vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
 
         vk::Buffer staging_buffer;
@@ -756,6 +766,13 @@ private:
     }
 
     void create_index_buffer() {
+        for (std::size_t i { 0uz }; i < indices.size(); i += 3uz) {
+            minilog::log_debug(
+                "triangle: {}, {}, {}",
+                indices[i], indices[i + 1], indices[i + 2]
+            );
+        }
+
         vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
 
         vk::Buffer staging_buffer;
@@ -913,6 +930,31 @@ private:
         }
     }
 
+    void create_render_descriptor_set_layout() {
+        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
+            .binding = 3u,
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .descriptorCount = 1u,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .pImmutableSamplers = nullptr
+        };
+
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .bindingCount = 1u,
+            .pBindings = &descriptor_set_layout_binding
+        };
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &render_descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
+        }
+    }
+
     void create_graphic_pipeline() {
         // Create graphic pipeline layout
         std::vector<char> vert_code = read_shader_file("./src/7_sdf/shaders/7_sdf_vert.spv");
@@ -1046,8 +1088,8 @@ private:
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
             .pNext = nullptr,
             .flags = {},
-            .setLayoutCount = 0u,
-            .pSetLayouts = nullptr,
+            .setLayoutCount = 1u,
+            .pSetLayouts = &render_descriptor_set_layout,
             .pushConstantRangeCount = 0u,
             .pPushConstantRanges = nullptr
         };
