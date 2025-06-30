@@ -823,38 +823,19 @@ private:
             frag_pipeline_shader_stage_ci
         };
 
-        vk::VertexInputBindingDescription vertex_input_binding_desc {
-            .binding = 0u,
-            .stride = sizeof(Particle),
-            .inputRate = vk::VertexInputRate::eVertex
-        };
-        std::array<vk::VertexInputAttributeDescription, 2uz> vertex_input_attribute_descs = {
-            vk::VertexInputAttributeDescription {
-                .location = 0u,
-                .binding = 0u,
-                .format = vk::Format::eR32G32Sfloat,
-                .offset = offsetof(Particle, position)
-            },
-            vk::VertexInputAttributeDescription {
-                .location = 1u,
-                .binding = 0u,
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = offsetof(Particle, color)
-            }
-        };
         vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci {
             .pNext = nullptr,
             .flags = {},
-            .vertexBindingDescriptionCount = 1u,
-            .pVertexBindingDescriptions = &vertex_input_binding_desc,
-            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(vertex_input_attribute_descs.size()),
-            .pVertexAttributeDescriptions = vertex_input_attribute_descs.data()
+            .vertexBindingDescriptionCount = 0u,
+            .pVertexBindingDescriptions = nullptr,
+            .vertexAttributeDescriptionCount = 0u,
+            .pVertexAttributeDescriptions = nullptr
         };
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci {
             .pNext = nullptr,
             .flags = {},
-            .topology = vk::PrimitiveTopology::ePointList,
+            .topology = vk::PrimitiveTopology::eTriangleList,
             .primitiveRestartEnable = vk::False
         };
 
@@ -909,20 +890,6 @@ private:
             .alphaToCoverageEnable = vk::False,
             .alphaToOneEnable = vk::False
         };
-
-        // vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_ci {
-        //     .pNext = nullptr,
-        //     .flags = {},
-        //     .depthTestEnable = vk::True,
-        //     .depthWriteEnable = vk::True,
-        //     .depthCompareOp = vk::CompareOp::eLess,
-        //     .depthBoundsTestEnable = vk::False,
-        //     .stencilTestEnable = vk::False,
-        //     .front = {},
-        //     .back = {},
-        //     .minDepthBounds = 0.0f,
-        //     .maxDepthBounds = 1.0f
-        // };
 
         vk::PipelineColorBlendAttachmentState color_blend_attachment_state {
             .blendEnable = vk::True,
@@ -1153,7 +1120,7 @@ private:
             },
             vk::DescriptorPoolSize {
                 .type = vk::DescriptorType::eStorageBuffer,
-                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT + 2u) * 2u
+                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 4u
             }
         };
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
@@ -1377,90 +1344,90 @@ private:
         // 调用 stb_image_write 库函数
         int result = stbi_write_png(filename, 1920, 1080, 4, image_data_uchar.data(), stride_in_bytes);
 
-        // // Render submission
-        // if (
-        //     vk::Result result = logical_device.waitForFences(
-        //         1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
-        //     );
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_debug("render: wait for vk::Fence failed!");
-        // }
+        // Render submission
+        if (
+            vk::Result result = logical_device.waitForFences(
+                1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("render: wait for vk::Fence failed!");
+        }
 
-        // std::uint32_t image_index { 0u };
-        // if (
-        //     vk::Result result = logical_device.acquireNextImageKHR(
-        //         swapchain,
-        //         std::numeric_limits<std::uint64_t>::max(),
-        //         image_available_semaphores[current_frame],
-        //         nullptr,
-        //         &image_index
-        //     );
-        //     result == vk::Result::eErrorOutOfDateKHR
-        // ) {
-        //     recreate_swapchain();
-        //     return ;
-        // } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-        //     minilog::log_fatal("Failed to acquire swap chain image!");
-        // }
+        std::uint32_t image_index { 0u };
+        if (
+            vk::Result result = logical_device.acquireNextImageKHR(
+                swapchain,
+                std::numeric_limits<std::uint64_t>::max(),
+                image_available_semaphores[current_frame],
+                nullptr,
+                &image_index
+            );
+            result == vk::Result::eErrorOutOfDateKHR
+        ) {
+            recreate_swapchain();
+            return ;
+        } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+            minilog::log_fatal("Failed to acquire swap chain image!");
+        }
 
-        // if (
-        //     vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_debug("render: reset vk::Fence failed!");
-        // }
+        if (
+            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("render: reset vk::Fence failed!");
+        }
 
-        // render_command_buffers[current_frame].reset({});
-        // record_render_command_buffer(render_command_buffers[current_frame], image_index);
+        render_command_buffers[current_frame].reset({});
+        record_render_command_buffer(render_command_buffers[current_frame], image_index);
 
-        // std::array<vk::Semaphore, 2uz> wait_semaphores = {
-        //     compute_finished_semaphores[current_frame],
-        //     image_available_semaphores[current_frame]
-        // };
-        // std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
-        //     vk::PipelineStageFlagBits::eComputeShader,
-        //     vk::PipelineStageFlagBits::eColorAttachmentOutput
-        // };
-        // submit_info = vk::SubmitInfo {};
-        // submit_info.pNext = nullptr;
-        // submit_info.waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size());
-        // submit_info.pWaitSemaphores = wait_semaphores.data();
-        // submit_info.pWaitDstStageMask = wait_stages.data();
-        // submit_info.commandBufferCount = 1u;
-        // submit_info.pCommandBuffers = &render_command_buffers[current_frame];
-        // submit_info.signalSemaphoreCount = 1u;
-        // submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
-        // if (
-        //     vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_fatal("render: failed to submit render command buffer!");
-        // }
+        std::array<vk::Semaphore, 2uz> wait_semaphores = {
+            compute_finished_semaphores[current_frame],
+            image_available_semaphores[current_frame]
+        };
+        std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::PipelineStageFlagBits::eColorAttachmentOutput
+        };
+        submit_info = vk::SubmitInfo {};
+        submit_info.pNext = nullptr;
+        submit_info.waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size());
+        submit_info.pWaitSemaphores = wait_semaphores.data();
+        submit_info.pWaitDstStageMask = wait_stages.data();
+        submit_info.commandBufferCount = 1u;
+        submit_info.pCommandBuffers = &render_command_buffers[current_frame];
+        submit_info.signalSemaphoreCount = 1u;
+        submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
+        if (
+            vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("render: failed to submit render command buffer!");
+        }
 
-        // vk::SwapchainKHR swap_chains[] = { swapchain };
-        // vk::PresentInfoKHR present_info {
-        //     .pNext = nullptr,
-        //     .waitSemaphoreCount = 1u,
-        //     .pWaitSemaphores = &render_finished_semaphores[current_frame],
-        //     .swapchainCount = 1u,
-        //     .pSwapchains = swap_chains,
-        //     .pImageIndices = &image_index,
-        //     .pResults = nullptr
-        // };
-        // if (
-        //     vk::Result result = present_queue.presentKHR(&present_info);
-        //     result == vk::Result::eErrorOutOfDateKHR
-        //         || result == vk::Result::eSuboptimalKHR
-        //         || framebuffer_resized
-        // ) {
-        //     framebuffer_resized = false;
-        //     recreate_swapchain();
-        // } else if (result != vk::Result::eSuccess) {
-        //     minilog::log_fatal("Failed to present swap chain image!");
-        // }
+        vk::SwapchainKHR swap_chains[] = { swapchain };
+        vk::PresentInfoKHR present_info {
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1u,
+            .pWaitSemaphores = &render_finished_semaphores[current_frame],
+            .swapchainCount = 1u,
+            .pSwapchains = swap_chains,
+            .pImageIndices = &image_index,
+            .pResults = nullptr
+        };
+        if (
+            vk::Result result = present_queue.presentKHR(&present_info);
+            result == vk::Result::eErrorOutOfDateKHR
+                || result == vk::Result::eSuboptimalKHR
+                || framebuffer_resized
+        ) {
+            framebuffer_resized = false;
+            recreate_swapchain();
+        } else if (result != vk::Result::eSuccess) {
+            minilog::log_fatal("Failed to present swap chain image!");
+        }
 
-        // current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
+        current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
     }
 
     void cleanup_swapchain() {
@@ -1519,12 +1486,10 @@ private:
             .maxDepth = 1.0f
         };
         vk::Rect2D scissor { .offset { .x = 0, .y = 0 }, .extent = swapchain_extent };
-        vk::DeviceSize offsets[] = { 0u };
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
-        commandBuffer.bindVertexBuffers(0u, 1u, &storage_buffers[current_frame], offsets);
-        commandBuffer.draw(PARTICLE_COUNT, 1u, 0u, 0u);
+        commandBuffer.draw(6u, 1u, 0u, 0u);
         commandBuffer.endRenderPass(); // render pass end
         commandBuffer.end(); // command buffer end
     }
