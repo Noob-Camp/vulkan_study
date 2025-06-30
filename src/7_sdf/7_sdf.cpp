@@ -327,6 +327,30 @@ private:
             glfwPollEvents();
             draw_frame();
 
+            if (glfwGetKey(glfw_window, GLFW_KEY_F12) != GLFW_RELEASE) {
+                std::vector<float> output_data;
+                output_data.resize(width * height * 4u);
+                void* data = logical_device.mapMemory(storage_device_memorys[2uz], 0u, width * height * 4u * 4u, {});
+                memcpy(output_data.data(), data, width * height * 4u * 4u);
+                logical_device.unmapMemory(storage_device_memorys[2uz]);
+
+                std::vector<unsigned char> image_data_uchar(width * height * 4u);
+                for (size_t i = 0; i < output_data.size(); ++i) {
+                    float value = output_data[i];
+                    value = std::fmax(0.0f, std::fmin(1.0f, value)); // clamp [0.0, 1.0]
+                    image_data_uchar[i] = static_cast<unsigned char>(std::round(value * 255.0f)); // [0, 255]
+                }
+
+                const char* file_name = "output_image.png";
+                int stride_in_bytes = width * 4; // bytes/row
+                if (
+                    int result = stbi_write_png(file_name, width, height, 4, image_data_uchar.data(), stride_in_bytes);
+                    result == 1
+                ) {
+                    minilog::log_debug("write {} successful!", file_name);
+                }
+            }
+
             // We want to animate the particle system using the last frames time to get smooth,
             //   frame-rate independent animation
             double current_time = glfwGetTime();
@@ -670,7 +694,7 @@ private:
     }
 
     void create_output_buffer() {
-        vk::DeviceSize device_size = 1920u * 1080u * 4u * 4u;
+        vk::DeviceSize device_size = width * height * 4u * 4u;
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
         create_buffer(
@@ -682,7 +706,7 @@ private:
             staging_device_memory
         );
 
-        std::vector<float> test(1920u * 1080u * 4u, 0.0f);
+        std::vector<float> test(width * height * 4u, 0.0f);
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
@@ -704,7 +728,7 @@ private:
     }
 
     void create_seed_buffer() {
-        vk::DeviceSize device_size = 1920u * 1080u * 4u;
+        vk::DeviceSize device_size = width * height * 4u;
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
         create_buffer(
@@ -716,7 +740,7 @@ private:
             staging_device_memory
         );
 
-        std::vector<std::uint32_t> test(1920u * 1080u, 0u);
+        std::vector<std::uint32_t> test(width * height, 0u);
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
@@ -1176,12 +1200,12 @@ private:
             vk::DescriptorBufferInfo descriptor_buffer_info4 {
                 .buffer = storage_buffers[2uz],
                 .offset = 0u,
-                .range = 1920u * 1080u * 4u * 4u
+                .range = width * height * 4u * 4u
             };
             vk::DescriptorBufferInfo descriptor_buffer_info5 {
                 .buffer = storage_buffers[3uz],
                 .offset = 0u,
-                .range = 1920u * 1080u * 4u
+                .range = width * height * 4u
             };
             std::vector<vk::WriteDescriptorSet> write_descriptor_sets = {
                 vk::WriteDescriptorSet {
@@ -1321,28 +1345,6 @@ private:
         ) {
             minilog::log_fatal("compute: failed to submit compute command buffer!");
         }
-
-        compute_queue.waitIdle(); // wait the calculation to finish
-
-        std::vector<float> output_data;
-        output_data.resize(1920u * 1080u * 4u);
-        void* data = logical_device.mapMemory(storage_device_memorys[2uz], 0u, 1920u * 1080u * 4u * 4u, {});
-        memcpy(output_data.data(), data, 1920u * 1080u * 4u * 4u);
-        logical_device.unmapMemory(storage_device_memorys[2uz]);
-
-        std::vector<unsigned char> image_data_uchar(1920u * 1080u * 4u);
-        for (size_t i = 0; i < output_data.size(); ++i) {
-            // 确保浮点值在 0.0 到 1.0 之间，然后映射到 0 到 255
-            float value = output_data[i];
-            // 钳制值到 [0.0, 1.0] 范围，以防计算着色器输出超出此范围
-            value = std::fmax(0.0f, std::fmin(1.0f, value));
-            image_data_uchar[i] = static_cast<unsigned char>(std::round(value * 255.0f));
-        }
-
-        const char* filename = "output_image.png";
-        int stride_in_bytes = 1920 * 4; // 每行有多少字节 (width * 4 字节/像素)
-        // 调用 stb_image_write 库函数
-        int result = stbi_write_png(filename, 1920, 1080, 4, image_data_uchar.data(), stride_in_bytes);
 
         // Render submission
         if (
@@ -1848,7 +1850,7 @@ private:
             0u,
             nullptr
         );
-        commandBuffer.dispatch(240u, 135u, 1u);
+        commandBuffer.dispatch(width / 8u, height / 8u, 1u);
         commandBuffer.end(); // command buffer end
     }
 
