@@ -108,6 +108,29 @@ struct Particle {
 };
 
 
+struct Vertex {
+    glm::vec3 position;
+    glm::vec3 color;
+    glm::vec2 uv;
+
+    bool operator==(const Vertex& other) const {
+        return position == other.position
+            && color == other.color
+            && uv == other.uv;
+    }
+};
+namespace std {
+template<> struct hash<Vertex> {
+    std::size_t operator()(const Vertex& vertex) const {
+        auto x = hash<glm::vec3>()(vertex.position);
+        auto y = hash<glm::vec3>()(vertex.color) << 1;
+        auto z = hash<glm::vec2>()(vertex.uv) << 1;
+        return ((x ^ y) >> 1) ^ z;
+    }
+};
+} // namespace std end
+
+
 struct QueueFamilyIndex {
     std::optional<std::uint32_t> graphic_and_compute;
     std::optional<std::uint32_t> present;
@@ -160,6 +183,12 @@ private:
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
+    std::vector<Vertex> vertices;
+    vk::Buffer vertex_buffer;
+    vk::DeviceMemory vertex_device_memory;
+    std::vector<std::uint32_t> indices;
+    vk::Buffer index_buffer;
+    vk::DeviceMemory index_device_memory;
     std::vector<vk::Buffer> storage_buffers;
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
@@ -307,6 +336,7 @@ private:
         create_swapchain_imageviews();
 
         create_uniform_buffers();
+        load_obj_model();
         create_storage_buffers();
 
         create_render_pass();
@@ -648,46 +678,109 @@ private:
         }
     }
 
+    void load_obj_model() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn { ""s };
+        std::string err { ""s };
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+            minilog::log_fatal("{}", warn + err);
+        }
+
+        std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex {
+                    .position = {
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 0)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
+                    },
+                    .color = { 1.0f, 1.0f, 1.0f },
+                    .uv = {
+                        attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
+                        1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
+                    }
+                };
+                if (unique_vertices.count(vertex) == 0) {
+                    unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(unique_vertices[vertex]);
+            }
+        }
+    }
+
     void create_storage_buffers() {
         // storage_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         // storage_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
         storage_buffers.resize(4uz);
         storage_device_memorys.resize(4uz);
 
-        create_particles_buffers();
+        create_vertex_buffer();
+        create_index_buffer();
         create_output_buffer();
         create_seed_buffer();
     }
 
-    void create_particles_buffers() {
-        vk::DeviceSize device_size = sizeof(Particle) * PARTICLE_COUNT;
+    void create_vertex_buffer() {
+        vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
+
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
         create_buffer(
-            device_size,
+            vertex_device_size,
             vk::BufferUsageFlagBits::eTransferSrc,
             vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent,
             staging_buffer,
             staging_device_memory
         );
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
-        memcpy(data, particles.data(), static_cast<std::size_t>(device_size));
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size, {});
+        memcpy(data, vertices.data(), static_cast<std::size_t>(vertex_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
-        // Copy initial particle data to all storage buffers
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            create_buffer(
-                device_size,
-                vk::BufferUsageFlagBits::eTransferDst
-                | vk::BufferUsageFlagBits::eVertexBuffer
-                | vk::BufferUsageFlagBits::eStorageBuffer,
-                vk::MemoryPropertyFlagBits::eDeviceLocal,
-                storage_buffers[i],
-                storage_device_memorys[i]
-            );
-            copy_buffer(staging_buffer, storage_buffers[i], device_size);
-        }
+        create_buffer(
+            vertex_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eVertexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            vertex_buffer,
+            vertex_device_memory
+        );
+        copy_buffer(staging_buffer, vertex_buffer, vertex_device_size);
+
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
+    }
+
+    void create_index_buffer() {
+        vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
+
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {});
+        memcpy(data, indices.data(), static_cast<std::size_t>(index_device_size));
+        logical_device.unmapMemory(staging_device_memory);
+
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eIndexBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            index_buffer,
+            index_device_memory
+        );
+        copy_buffer(staging_buffer, index_buffer, index_device_size);
 
         logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);

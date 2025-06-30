@@ -2,7 +2,7 @@
 
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 pixel_color;
-layout(set = 0, binding = 0, std430) readonly buffer ImageOutputSSBO { vec4 pixel_colors[]; };
+layout(set = 0, binding = 0, std430) readonly buffer PixelColors { vec4 pixel_colors[]; };
 
 const uvec2 screen_size = uvec2(1920u, 1080u);
 const float hdr2ldr_scale = 2.0f;
