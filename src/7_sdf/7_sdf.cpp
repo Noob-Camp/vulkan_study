@@ -193,7 +193,6 @@ private:
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
     vk::RenderPass render_pass;
-    vk::DescriptorSetLayout render_descriptor_set_layout;
     vk::PipelineLayout render_pipeline_layout;
     vk::Pipeline render_pipeline;
 
@@ -930,31 +929,6 @@ private:
         }
     }
 
-    void create_render_descriptor_set_layout() {
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
-            .binding = 3u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eFragment,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .bindingCount = 1u,
-            .pBindings = &descriptor_set_layout_binding
-        };
-        if (
-            vk::Result result = logical_device.createDescriptorSetLayout(
-                &descriptor_set_layout_ci, nullptr, &render_descriptor_set_layout
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
-        }
-    }
-
     void create_graphic_pipeline() {
         // Create graphic pipeline layout
         std::vector<char> vert_code = read_shader_file("./src/7_sdf/shaders/7_sdf_vert.spv");
@@ -1088,8 +1062,8 @@ private:
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
             .pNext = nullptr,
             .flags = {},
-            .setLayoutCount = 1u,
-            .pSetLayouts = &render_descriptor_set_layout,
+            .setLayoutCount = 0u,
+            .pSetLayouts = nullptr,
             .pushConstantRangeCount = 0u,
             .pPushConstantRanges = nullptr
         };
@@ -1163,7 +1137,8 @@ private:
             .binding = 3u,
             .descriptorType = vk::DescriptorType::eStorageBuffer,
             .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
+            .stageFlags = vk::ShaderStageFlagBits::eCompute
+                | vk::ShaderStageFlagBits::eFragment,
             .pImmutableSamplers = nullptr
         };
 
