@@ -340,7 +340,6 @@ private:
         create_storage_buffers();
 
         create_render_pass();
-        create_render_descriptor_set_layout();
         create_graphic_pipeline();
         create_compute_descriptor_set_layout();
         create_compute_pipeline();
