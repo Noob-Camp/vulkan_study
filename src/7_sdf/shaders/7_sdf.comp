@@ -154,11 +154,11 @@ struct Triangle {
 // std140 (uniform) / std430 (SSBO)
 // Align memory with a size of 4 bytes
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(set = 0, binding = 0, std140) uniform ParameterUBO { float delta_time; } ubo;
-layout(set = 0, binding = 1, std430) readonly buffer VertexBuffer { Vertex vertices[]; };
-layout(set = 0, binding = 2, std430) readonly buffer IndexBuffer { Triangle indices[]; };
-layout(set = 0, binding = 3, std430) buffer PixelColors { vec4 pixel_colors[]; };
-layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; };
+layout(set = 0, binding = 0, std140) uniform float delta_time;
+layout(set = 0, binding = 1, std430) readonly buffer Vertex vertices[]; // vertex buffer
+layout(set = 0, binding = 2, std430) readonly buffer Triangle indices[]; // index buffer
+layout(set = 0, binding = 3, std430) buffer vec4 pixel_colors[]; // pixel colors
+layout(set = 0, binding = 4, std430) buffer uint seed_buffer[]; // seed buffer
 
 const uvec2 screen_size = uvec2(1920u, 1080u);
 const uint spp_per_dispatch = 64u;

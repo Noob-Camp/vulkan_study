@@ -192,13 +192,13 @@ private:
     std::vector<vk::Buffer> storage_buffers;
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
-    vk::RenderPass render_pass;
-    vk::PipelineLayout render_pipeline_layout;
-    vk::Pipeline render_pipeline;
-
     vk::DescriptorSetLayout compute_descriptor_set_layout;
     vk::PipelineLayout compute_pipeline_layout;
     vk::Pipeline compute_pipeline;
+
+    vk::RenderPass render_pass;
+    vk::PipelineLayout render_pipeline_layout;
+    vk::Pipeline render_pipeline;
 
     vk::DescriptorPool descriptor_pool;
     std::vector<vk::DescriptorSet> compute_descriptor_sets;
@@ -339,10 +339,11 @@ private:
         load_obj_model();
         create_storage_buffers();
 
-        create_render_pass();
-        create_graphic_pipeline();
         create_compute_descriptor_set_layout();
         create_compute_pipeline();
+
+        create_render_pass();
+        create_graphic_pipeline();
 
         create_frame_buffers();
 
@@ -869,6 +870,113 @@ private:
         logical_device.freeMemory(staging_device_memory);
     }
 
+    void create_compute_descriptor_set_layout() {
+        std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings = {
+            vk::DescriptorSetLayoutBinding { // ubo
+                .binding = 0u,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // vertex buffer
+                .binding = 1u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // index buffer
+                .binding = 2u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // pixel colors
+                .binding = 3u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute
+                    | vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // seed buffer
+                .binding = 4u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            }
+        };
+
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+            .pBindings = descriptor_set_layout_bindings.data()
+        };
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &compute_descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
+        }
+    }
+
+    void create_compute_pipeline() {
+        std::vector<char> comp_code = read_shader_file("./src/7_sdf/shaders/7_sdf_comp.spv");
+        vk::ShaderModule comp_shader_module = create_shader_module(comp_code);
+        vk::PipelineShaderStageCreateInfo comp_pipeline_shader_stage_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .stage = vk::ShaderStageFlagBits::eCompute,
+            .module = comp_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = nullptr
+        };
+
+        std::vector<vk::DescriptorSetLayout>
+        descriptor_set_layouts = { compute_descriptor_set_layout };
+        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data(),
+            .pushConstantRangeCount = 0u,
+            .pPushConstantRanges = nullptr
+        };
+        if (
+            vk::Result result = logical_device.createPipelineLayout(
+                &pipeline_layout_ci, nullptr, &compute_pipeline_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::PipelineLayout!");
+        }
+
+        vk::ComputePipelineCreateInfo compute_pipeline_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .stage = comp_pipeline_shader_stage_ci,
+            .layout = compute_pipeline_layout,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = 0
+        };
+        if (
+            vk::Result result = logical_device.createComputePipelines(
+                nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create compute pipeline!");
+        }
+
+        logical_device.destroyShaderModule(comp_shader_module, nullptr);
+    }
+
     void create_render_pass() {
         vk::AttachmentDescription attachment_desc_color {
             .flags = {},
@@ -1107,121 +1215,6 @@ private:
         logical_device.destroyShaderModule(frag_shader_module, nullptr);
     }
 
-    void create_compute_descriptor_set_layout() {
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
-            .binding = 0u,
-            .descriptorType = vk::DescriptorType::eUniformBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding2 {
-            .binding = 1u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding3 {
-            .binding = 2u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding4 {
-            .binding = 3u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute
-                | vk::ShaderStageFlagBits::eFragment,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding5 {
-            .binding = 4u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        std::array<vk::DescriptorSetLayoutBinding, 5uz> descriptor_set_layout_bindings = {
-            descriptor_set_layout_binding,
-            descriptor_set_layout_binding2,
-            descriptor_set_layout_binding3,
-            descriptor_set_layout_binding4,
-            descriptor_set_layout_binding5
-        };
-
-        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
-            .pBindings = descriptor_set_layout_bindings.data()
-        };
-        if (
-            vk::Result result = logical_device.createDescriptorSetLayout(
-                &descriptor_set_layout_ci, nullptr, &compute_descriptor_set_layout
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
-        }
-    }
-
-    void create_compute_pipeline() {
-        std::vector<char> comp_code = read_shader_file("./src/7_sdf/shaders/7_sdf_comp.spv");
-        vk::ShaderModule comp_shader_module = create_shader_module(comp_code);
-        vk::PipelineShaderStageCreateInfo comp_pipeline_shader_stage_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .stage = vk::ShaderStageFlagBits::eCompute,
-            .module = comp_shader_module,
-            .pName = "main",
-            .pSpecializationInfo = nullptr
-        };
-
-        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .setLayoutCount = 1u,
-            .pSetLayouts = &compute_descriptor_set_layout,
-            .pushConstantRangeCount = 0u,
-            .pPushConstantRanges = nullptr
-        };
-        if (
-            vk::Result result = logical_device.createPipelineLayout(
-                &pipeline_layout_ci, nullptr, &compute_pipeline_layout
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::PipelineLayout!");
-        }
-
-        vk::ComputePipelineCreateInfo compute_pipeline_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .stage = comp_pipeline_shader_stage_ci,
-            .layout = compute_pipeline_layout,
-            .basePipelineHandle = nullptr,
-            .basePipelineIndex = 0
-        };
-        if (
-            vk::Result result = logical_device.createComputePipelines(
-                nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create compute pipeline!");
-        }
-
-        logical_device.destroyShaderModule(comp_shader_module, nullptr);
-    }
-
     void create_frame_buffers() {
         frame_buffers.resize(swapchain_imageviews.size());
         for (std::size_t i { 0uz }; i < swapchain_imageviews.size(); ++i) {
@@ -1291,30 +1284,30 @@ private:
         }
 
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vk::DescriptorBufferInfo descriptor_buffer_info {
+            vk::DescriptorBufferInfo descriptor_buffer_info { // ubo
                 .buffer = uniform_buffers[i],
-                .offset = 0u,
-                .range = sizeof(UniformBufferObject)
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(UniformBufferObject) }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info2 {
+            vk::DescriptorBufferInfo descriptor_buffer_info2 { // vertex buffer
                 .buffer = storage_buffers[(i - 1uz) % MAX_FRAMES_IN_FLIGHT],
-                .offset = 0u,
-                .range = sizeof(Particle) * PARTICLE_COUNT
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info3 {
+            vk::DescriptorBufferInfo descriptor_buffer_info3 { // index buffer
                 .buffer = storage_buffers[i],
-                .offset = 0u,
-                .range = sizeof(Particle) * PARTICLE_COUNT
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info4 {
+            vk::DescriptorBufferInfo descriptor_buffer_info4 { // pixel colors
                 .buffer = storage_buffers[2uz],
-                .offset = 0u,
-                .range = width * height * 4u * 4u
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u * 4u }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info5 {
+            vk::DescriptorBufferInfo descriptor_buffer_info5 { // seed buffer
                 .buffer = storage_buffers[3uz],
-                .offset = 0u,
-                .range = width * height * 4u
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u }
             };
             std::vector<vk::WriteDescriptorSet> write_descriptor_sets = {
                 vk::WriteDescriptorSet {
@@ -1930,9 +1923,7 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
-        UniformBufferObject ubo {};
-        ubo.delta_time = last_frame_time * 2.0f;
-
+        UniformBufferObject ubo { .delta_time = last_frame_time * 2.0f };
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
     }
 
@@ -1954,10 +1945,8 @@ private:
             vk::PipelineBindPoint::eCompute,
             compute_pipeline_layout,
             0u,
-            1u,
-            &compute_descriptor_sets[current_frame],
-            0u,
-            nullptr
+            1u, &compute_descriptor_sets[current_frame],
+            0u, nullptr
         );
         commandBuffer.dispatch(width / 8u, height / 8u, 1u);
         commandBuffer.end(); // command buffer end
