@@ -197,11 +197,13 @@ private:
     vk::Pipeline compute_pipeline;
 
     vk::RenderPass render_pass;
+    vk::DescriptorSetLayout render_descriptor_set_layout;
     vk::PipelineLayout render_pipeline_layout;
     vk::Pipeline render_pipeline;
 
     vk::DescriptorPool descriptor_pool;
     std::vector<vk::DescriptorSet> compute_descriptor_sets;
+    std::vector<vk::DescriptorSet> render_descriptor_sets;
 
     std::vector<vk::Semaphore> image_available_semaphores;
     std::vector<vk::Semaphore> render_finished_semaphores;
@@ -343,12 +345,14 @@ private:
         create_compute_pipeline();
 
         create_render_pass();
+        create_render_descriptor_set_layout();
         create_graphic_pipeline();
 
         create_frame_buffers();
 
         create_descriptor_pool();
         create_compute_descriptor_sets();
+        create_render_descriptor_sets();
 
         create_sync_objects();
     }
@@ -1036,6 +1040,33 @@ private:
         }
     }
 
+    void create_render_descriptor_set_layout() {
+        std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings = {
+            vk::DescriptorSetLayoutBinding { // pixel colors
+                .binding = 0u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            }
+        };
+
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+            .pBindings = descriptor_set_layout_bindings.data()
+        };
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &render_descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
+        }
+    }
+
     void create_graphic_pipeline() {
         // Create graphic pipeline layout
         std::vector<char> vert_code = read_shader_file("./src/7_sdf/shaders/7_sdf_vert.spv");
@@ -1166,11 +1197,13 @@ private:
             .pDynamicStates = dynamic_states.data()
         };
 
+        std::vector<vk::DescriptorSetLayout>
+        descriptor_set_layouts = { render_descriptor_set_layout };
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
             .pNext = nullptr,
             .flags = {},
-            .setLayoutCount = 0u,
-            .pSetLayouts = nullptr,
+            .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data(),
             .pushConstantRangeCount = 0u,
             .pPushConstantRanges = nullptr
         };
@@ -1252,7 +1285,7 @@ private:
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
             .pNext = nullptr,
             .flags = {},
-            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT),
+            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 10u,
             .poolSizeCount = static_cast<std::uint32_t>(descriptor_pool_size.size()),
             .pPoolSizes = descriptor_pool_size.data()
         };
@@ -1363,6 +1396,53 @@ private:
                     .descriptorType = vk::DescriptorType::eStorageBuffer,
                     .pImageInfo = nullptr,
                     .pBufferInfo = &descriptor_buffer_info5,
+                    .pTexelBufferView = nullptr
+                }
+            };
+            logical_device.updateDescriptorSets(
+                static_cast<std::uint32_t>(write_descriptor_sets.size()),
+                write_descriptor_sets.data(),
+                0u,
+                nullptr
+            );
+        }
+    }
+
+    void create_render_descriptor_sets() {
+        render_descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+        std::vector<vk::DescriptorSetLayout> descriptor_set_layouts(
+            MAX_FRAMES_IN_FLIGHT,
+            render_descriptor_set_layout
+        );
+        vk::DescriptorSetAllocateInfo descriptor_set_ai {
+            .pNext = nullptr,
+            .descriptorPool = descriptor_pool,
+            .descriptorSetCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data()
+        };
+        if (
+            vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, render_descriptor_sets.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSet!");
+        }
+
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            vk::DescriptorBufferInfo descriptor_buffer_info { // pixel colors
+                .buffer = storage_buffers[2uz],
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u * 4u }
+            };
+            std::vector<vk::WriteDescriptorSet> write_descriptor_sets = {
+                vk::WriteDescriptorSet {
+                    .pNext = nullptr,
+                    .dstSet = render_descriptor_sets[i],
+                    .dstBinding = 0u,
+                    .dstArrayElement = 0u,
+                    .descriptorCount = 1u,
+                    .descriptorType = vk::DescriptorType::eStorageBuffer,
+                    .pImageInfo = nullptr,
+                    .pBufferInfo = &descriptor_buffer_info,
                     .pTexelBufferView = nullptr
                 }
             };
