@@ -1143,7 +1143,7 @@ private:
             .depthClampEnable = vk::False,
             .rasterizerDiscardEnable = vk::False,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eFront,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = vk::False,
             .depthBiasClamp = 0.0f,
@@ -1673,7 +1673,7 @@ private:
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
-        commandBuffer.draw(6u, 1u, 0u, 0u);
+        commandBuffer.draw(3u, 1u, 0u, 0u);
         commandBuffer.endRenderPass(); // render pass end
         commandBuffer.end(); // command buffer end
     }
