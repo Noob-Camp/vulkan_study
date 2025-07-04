@@ -913,7 +913,6 @@ private:
                 .pImmutableSamplers = nullptr
             }
         };
-
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
             .pNext = nullptr,
             .flags = {},
@@ -1050,7 +1049,6 @@ private:
                 .pImmutableSamplers = nullptr
             }
         };
-
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
             .pNext = nullptr,
             .flags = {},
@@ -1285,7 +1283,7 @@ private:
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
             .pNext = nullptr,
             .flags = {},
-            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 10u,
+            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2u,
             .poolSizeCount = static_cast<std::uint32_t>(descriptor_pool_size.size()),
             .pPoolSizes = descriptor_pool_size.data()
         };
@@ -1323,12 +1321,12 @@ private:
                 .range = vk::DeviceSize { sizeof(UniformBufferObject) }
             };
             vk::DescriptorBufferInfo descriptor_buffer_info2 { // vertex buffer
-                .buffer = storage_buffers[(i - 1uz) % MAX_FRAMES_IN_FLIGHT],
+                .buffer = storage_buffers[0uz],
                 .offset = vk::DeviceSize { 0u },
                 .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
             };
             vk::DescriptorBufferInfo descriptor_buffer_info3 { // index buffer
-                .buffer = storage_buffers[i],
+                .buffer = storage_buffers[1uz],
                 .offset = vk::DeviceSize { 0u },
                 .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
             };
