@@ -363,11 +363,28 @@ private:
             draw_frame();
 
             if (glfwGetKey(glfw_window, GLFW_KEY_F12) != GLFW_RELEASE) {
-                std::vector<float> output_data;
-                output_data.resize(width * height * 4u);
-                void* data = logical_device.mapMemory(storage_device_memorys[2uz], 0u, width * height * 4u * 4u, {});
-                memcpy(output_data.data(), data, width * height * 4u * 4u);
-                logical_device.unmapMemory(storage_device_memorys[2uz]);
+                std::vector<float> output_data(width * height * 4uz, 0.0f);
+
+                vk::DeviceSize device_size = width * height * 4u * 4u;
+                vk::Buffer staging_buffer;
+                vk::DeviceMemory staging_device_memory;
+                create_buffer(
+                    device_size,
+                    vk::BufferUsageFlagBits::eTransferDst,
+                    vk::MemoryPropertyFlagBits::eHostVisible
+                    | vk::MemoryPropertyFlagBits::eHostCoherent,
+                    staging_buffer,
+                    staging_device_memory
+                );
+
+                copy_buffer(storage_buffers[2uz], staging_buffer, device_size);
+
+                void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size, {});
+                memcpy(output_data.data(), data, static_cast<std::size_t>(device_size));
+                logical_device.unmapMemory(staging_device_memory);
+
+                logical_device.destroy(staging_buffer);
+                logical_device.freeMemory(staging_device_memory);
 
                 std::vector<unsigned char> image_data_uchar(width * height * 4u);
                 for (size_t i = 0; i < output_data.size(); ++i) {
@@ -828,9 +845,7 @@ private:
             device_size,
             vk::BufferUsageFlagBits::eTransferDst
             | vk::BufferUsageFlagBits::eStorageBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal
-            | vk::MemoryPropertyFlagBits::eHostVisible
-            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
             storage_buffers[2uz],
             storage_device_memorys[2uz]
         );
