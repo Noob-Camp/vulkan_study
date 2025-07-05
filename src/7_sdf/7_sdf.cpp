@@ -97,16 +97,8 @@ std::vector<char> read_shader_file(const std::string& fileName) {
 
 
 struct UniformBufferObject {
-    float delta_time { 1.0f };
+    std::uint32_t sample_index { 0u };
 };
-
-
-struct Particle {
-    glm::vec2 position;
-    glm::vec2 velocity;
-    glm::vec4 color;
-};
-
 
 struct Vertex {
     glm::vec3 position;
@@ -151,8 +143,6 @@ struct SwapChainSupportDetail {
 
 class PathTracing {
 private:
-    std::vector<Particle> particles;
-
     std::uint32_t width;
     std::uint32_t height;
     std::string window_name;
@@ -180,15 +170,12 @@ private:
     std::vector<vk::ImageView> swapchain_imageviews;
     std::vector<vk::Framebuffer> frame_buffers;
 
+    UniformBufferObject ubo;
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
     std::vector<Vertex> vertices;
-    vk::Buffer vertex_buffer;
-    vk::DeviceMemory vertex_device_memory;
     std::vector<std::uint32_t> indices;
-    vk::Buffer index_buffer;
-    vk::DeviceMemory index_device_memory;
     std::vector<vk::Buffer> storage_buffers;
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
@@ -222,20 +209,7 @@ public:
         , height { 1080u }
         , window_name { "7_sdf"s }
     {
-        // Initialize particles
-        particles.resize(PARTICLE_COUNT);
-
-        std::default_random_engine rnd_engine((unsigned)time(nullptr));
-        std::uniform_real_distribution<float> rnd_dist(0.0f, 1.0f);
-        for (auto& particle : particles) {
-            float r = 1.0f;
-            float theta = rnd_dist(rnd_engine) * 2.0f * 3.1415926;
-            float x = r * std::cos(theta) * static_cast<float>(height) / static_cast<float>(width);
-            float y = r * std::sin(theta);
-            particle.position = glm::vec2(x, y);
-            particle.velocity = glm::normalize(glm::vec2(x, y)) * 0.00025f;
-            particle.color = glm::vec4(rnd_dist(rnd_engine), rnd_dist(rnd_engine), rnd_dist(rnd_engine), 1.0f);
-        }
+        ubo.sample_index = 0u;
     };
 
     PathTracing(
@@ -243,11 +217,11 @@ public:
         std::uint32_t _height,
         const std::string& _window_name
     )
-        : PathTracing()
+        : width { _width }
+        , height { _height }
+        , window_name { _window_name }
     {
-        width = _width;
-        height = _height;
-        window_name = _window_name;
+        ubo.sample_index = 0u;
     }
 
     ~PathTracing() {
@@ -266,6 +240,8 @@ public:
         logical_device.destroy(compute_pipeline);
         logical_device.destroy(compute_pipeline_layout);
         logical_device.destroy(compute_descriptor_set_layout);
+        logical_device.destroy(render_descriptor_set_layout);
+
         for (std::size_t i { 0uz }; i < uniform_buffers.size(); ++i) {
             logical_device.destroy(uniform_buffers[i]);
             logical_device.freeMemory(uniform_device_memorys[i]);
@@ -362,6 +338,13 @@ private:
             glfwPollEvents();
             draw_frame();
 
+            // F11: reset sample_index
+            if (glfwGetKey(glfw_window, GLFW_KEY_F11) != GLFW_RELEASE) {
+                ubo.sample_index = 0u;
+                minilog::log_debug("the ubo.sample_index is reset to 0u");
+            }
+
+            // F12: screenshot
             if (glfwGetKey(glfw_window, GLFW_KEY_F12) != GLFW_RELEASE) {
                 std::vector<float> output_data(width * height * 4uz, 0.0f);
 
@@ -774,12 +757,12 @@ private:
         create_buffer(
             vertex_device_size,
             vk::BufferUsageFlagBits::eTransferDst
-            | vk::BufferUsageFlagBits::eVertexBuffer,
+            | vk::BufferUsageFlagBits::eStorageBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            vertex_buffer,
-            vertex_device_memory
+            storage_buffers[0uz],
+            storage_device_memorys[0uz]
         );
-        copy_buffer(staging_buffer, vertex_buffer, vertex_device_size);
+        copy_buffer(staging_buffer, storage_buffers[0uz], vertex_device_size);
 
         logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);
@@ -812,12 +795,12 @@ private:
         create_buffer(
             index_device_size,
             vk::BufferUsageFlagBits::eTransferDst
-            | vk::BufferUsageFlagBits::eIndexBuffer,
+            | vk::BufferUsageFlagBits::eStorageBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            index_buffer,
-            index_device_memory
+            storage_buffers[1uz],
+            storage_device_memorys[1uz]
         );
-        copy_buffer(staging_buffer, index_buffer, index_device_size);
+        copy_buffer(staging_buffer, storage_buffers[1uz], index_device_size);
 
         logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);
@@ -843,7 +826,8 @@ private:
 
         create_buffer(
             device_size,
-            vk::BufferUsageFlagBits::eTransferDst
+            vk::BufferUsageFlagBits::eTransferSrc
+            | vk::BufferUsageFlagBits::eTransferDst
             | vk::BufferUsageFlagBits::eStorageBuffer,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             storage_buffers[2uz],
@@ -869,6 +853,11 @@ private:
         );
 
         std::vector<std::uint32_t> test(width * height, 0u);
+        for (std::uint32_t i { 0u }; i < width; ++i) {
+            for (std::uint32_t j { 0u }; j < height; ++j) {
+                test[i + j * width] = tea(i, j);
+            }
+        }
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
@@ -1338,12 +1327,12 @@ private:
             vk::DescriptorBufferInfo descriptor_buffer_info2 { // vertex buffer
                 .buffer = storage_buffers[0uz],
                 .offset = vk::DeviceSize { 0u },
-                .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
+                .range = vk::DeviceSize { sizeof(vertices[0uz]) * vertices.size() }
             };
             vk::DescriptorBufferInfo descriptor_buffer_info3 { // index buffer
                 .buffer = storage_buffers[1uz],
                 .offset = vk::DeviceSize { 0u },
-                .range = vk::DeviceSize { sizeof(Particle) * particles.size() }
+                .range = vk::DeviceSize { sizeof(indices[0uz]) * indices.size() }
             };
             vk::DescriptorBufferInfo descriptor_buffer_info4 { // pixel colors
                 .buffer = storage_buffers[2uz],
@@ -1686,6 +1675,13 @@ private:
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
+        commandBuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            render_pipeline_layout,
+            0u,
+            1u, &render_descriptor_sets[current_frame],
+            0u, nullptr
+        );
         commandBuffer.draw(3u, 1u, 0u, 0u);
         commandBuffer.endRenderPass(); // render pass end
         commandBuffer.end(); // command buffer end
@@ -2016,7 +2012,7 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
-        UniformBufferObject ubo { .delta_time = last_frame_time * 2.0f };
+        ubo.sample_index++;
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
     }
 
@@ -2098,6 +2094,16 @@ private:
         }
 
         logical_device.bindImageMemory(image, imageMemory, 0u);
+    }
+
+    std::uint32_t tea(std::uint32_t v0, std::uint32_t v1) {
+        std::uint32_t s0 { 0u };
+        for (std::uint32_t n { 0u }; n < 4u; ++n) {
+            s0 += 0x9e3779b9u;
+            v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
+            v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
+        }
+        return v0;
     }
 };
 

@@ -154,7 +154,7 @@ struct Triangle {
 // std140 (uniform) / std430 (SSBO)
 // Align memory with a size of 4 bytes
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(set = 0, binding = 0, std140) uniform UniformBuffer { float delta_time; }; // uniform buffer
+layout(set = 0, binding = 0, std140) uniform UniformBuffer { uint sample_index; }; // uniform buffer
 layout(set = 0, binding = 1, std430) readonly buffer VertexBuffer { Vertex vertices[]; }; // vertex buffer
 layout(set = 0, binding = 2, std430) readonly buffer IndexBuffer { Triangle indices[]; }; // index buffer
 layout(set = 0, binding = 3, std430) buffer PixelColors { vec4 pixel_colors[]; }; // pixel colors
@@ -163,6 +163,7 @@ layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; }; 
 const uvec2 screen_size = uvec2(1920u, 1080u);
 const uint spp_per_dispatch = 64u;
 const uint depth_per_dispatch = 10u;
+const float hdr2ldr_scale = 2.0f;
 
 // light data
 const vec3 light_emission = vec3(17.0f, 12.0f, 4.0f);
@@ -198,11 +199,27 @@ float balanced_heuristic(float pdf_a, float pdf_b) {
     return pdf_a / max(pdf_a + pdf_b, 1e-4f);
 }
 
+vec3 linear_to_srgb(vec3 x) {
+    vec3 srgb_result = mix(
+        1.055f * pow(x, vec3(1.0f / 2.4f)) - 0.055f,
+        12.92f * x,
+        lessThanEqual(x, vec3(0.00031308f))
+    );
+
+    return clamp(srgb_result, 0.0f, 1.0f);
+}
+
 
 void main() {
     uvec2 coord = gl_GlobalInvocationID.xy;
     uint index = coord.x + coord.y * screen_size.x;
-    uint state = tea(coord.x, coord.y);
+    uint state = seed_buffer[index];
+    if (sample_index == 0u) {
+        pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        seed_buffer[index] = state;
+        // return ;
+    }
+    const vec3 pixel_color_last = pixel_colors[index].xyz;
 
     float rx = lcg(state);
     float ry = lcg(state);
@@ -280,6 +297,25 @@ void main() {
     // radiance /= float(spp_per_dispatch);
     // if (isnan(radiance)) { radiance = vec3(0.0f, 0.0f, 0.0f); };
     // pixel_colors[index] = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
-    pixel_colors[index] = vec4(rx, rx, rx, 1.0f);
+    vec4 pixel_color = vec4(rx, rx, rx, 1.0f);
+    // pixel_color = vec4(
+    //     linear_to_srgb(
+    //         clamp(
+    //             pixel_color.xyz / pixel_color.w * hdr2ldr_scale,
+    //             0.0f,
+    //             1.0f
+    //         )
+    //     ),
+    //     pixel_color.w
+    // );
+    pixel_colors[index] = vec4(
+        mix(
+            pixel_color_last,
+            pixel_color.xyz,
+            1.0f / (sample_index + 1.0f)
+        ),
+        1.0f
+    );
+
     seed_buffer[index] = state;
 }
