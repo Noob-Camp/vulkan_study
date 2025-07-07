@@ -100,15 +100,14 @@ struct UniformBufferObject {
     std::uint32_t sample_index { 0u };
 };
 
+
 struct Vertex {
     glm::vec3 position;
     glm::vec3 color;
-    glm::vec2 uv;
 
     bool operator==(const Vertex& other) const {
         return position == other.position
             && color == other.color
-            && uv == other.uv;
     }
 };
 namespace std {
@@ -121,6 +120,13 @@ template<> struct hash<Vertex> {
     }
 };
 } // namespace std end
+
+
+struct Triangle {
+    std::uint32_t t0;
+    std::uint32_t t1;
+    std::uint32_t t2;
+};
 
 
 struct QueueFamilyIndex {
@@ -175,7 +181,7 @@ private:
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
     std::vector<Vertex> vertices;
-    std::vector<std::uint32_t> indices;
+    std::vector<Triangle> indices;
     std::vector<vk::Buffer> storage_buffers;
     std::vector<vk::DeviceMemory> storage_device_memorys;
 
@@ -693,6 +699,7 @@ private:
             minilog::log_fatal("{}", warn + err);
         }
 
+        std::vector<std::uint32_t> flat_indices;
         std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
         for (const auto& shape : shapes) {
             for (const auto& index : shape.mesh.indices) {
@@ -702,18 +709,23 @@ private:
                         attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
                         attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
                     },
-                    .color = { 1.0f, 1.0f, 1.0f },
-                    // .uv = {
-                    //     attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
-                    //     1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
-                    // }
+                    .color = { 1.0f, 1.0f, 1.0f }
                 };
                 if (unique_vertices.count(vertex) == 0) {
                     unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
                     vertices.push_back(vertex);
                 }
-                indices.push_back(unique_vertices[vertex]);
+                flat_indices.push_back(unique_vertices[vertex]);
             }
+        }
+
+        indices.reserve(flat_indices.size() / 3uz);
+        for (std::size_t i { 0uz }; i < flat_indices.size(); i += 3uz) {
+            indices[i] = Triangle {
+                flat_indices[i + 0uz],
+                flat_indices[i + 1uz],
+                flat_indices[i + 2uz]
+            };
         }
     }
 
@@ -769,10 +781,10 @@ private:
     }
 
     void create_index_buffer() {
-        for (std::size_t i { 0uz }; i < indices.size(); i += 3uz) {
+        for (auto& triangle_index : indices) {
             minilog::log_debug(
                 "triangle: {}, {}, {}",
-                indices[i], indices[i + 1], indices[i + 2]
+                triangle_index.t0, triangle_index.t1, triangle_index.t2
             );
         }
 

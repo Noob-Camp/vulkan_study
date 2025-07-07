@@ -30,12 +30,22 @@ Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
 vec3 ray_at(Ray ray, float t) {
     return ray.origin + t * ray.direction;
 }
-// vec3 offset_ray_origin(vec3 p, vec3 n) {
-//     ivec3 of_i(256.0f * n, 256.0f * n, 256.0f * n);
-//     auto p_i = as<float3>(as<int3>(p) + ite(p < 0.0f, -of_i, of_i));
-//     return ite(abs(p) < 1.0f / 32.0f, p + 1.0f / 65536.0f * n, p_i);
-// }
+vec3 offset_ray_origin(vec3 p, vec3 n) {
+    const float origin = 1.0f / 32.0f;
+    const float float_scale = 1.0f / 65536.0f;
 
+    ivec3 of_i = ivec3(256.0f * n);
+    ivec3 p_i = ivec3(p);
+    ivec3 offset = mix(of_i, -of_i, lessThan(p, vec3(0.0f)));
+    vec3 p_offset = vec3(p_i + offset);
+    vec3 p_final = mix(
+        p_offset,
+        p + float_scale * n,
+        greaterThanEqual(abs(p), vec3(origin))
+    );
+
+    return p_final;
+}
 
 // struct Camera {
 //     vec3 position;
@@ -131,17 +141,9 @@ SurfaceHitRecord hit_surface(
 // }
 
 
-struct Particle {
-    vec2 position;
-    vec2 velocity;
-    vec4 color;
-};
-
-
 struct Vertex {
     vec3 position;
     vec3 color;
-    vec2 uv;
 };
 
 struct Triangle {
