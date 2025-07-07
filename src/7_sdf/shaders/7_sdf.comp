@@ -44,22 +44,105 @@ Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
 vec3 ray_at(Ray ray, float t) {
     return ray.origin + t * ray.direction;
 }
+// vec3 offset_ray_origin(vec3 p, vec3 n) {
+//     const float origin = 1.0f / 32.0f;
+//     const float float_scale = 1.0f / 65536.0f;
+
+//     ivec3 of_i = ivec3(256.0f * n);
+//     ivec3 p_i = ivec3(p);
+//     ivec3 offset = mix(of_i, -of_i, lessThan(p, vec3(0.0f)));
+//     vec3 p_offset = vec3(p_i + offset);
+//     vec3 p_final = mix(
+//         p_offset,
+//         p + float_scale * n,
+//         greaterThanEqual(abs(p), vec3(origin))
+//     );
+
+//     return p_final;
+// }
+const float RAY_OFFSET_ORIGIN_THRESHOLD = 1.0f / 32.0f; // 0.03125
+const float RAY_OFFSET_FLOAT_SCALE = 1.0f / 65536.0f;   // 0.0000152587890625
+const float RAY_OFFSET_INT_SCALE = 256.0f;
+
+// 辅助函数：将 float3 转换为 int3 (按分量四舍五入或截断，取决于上下文)
+// 这里假设 make_int3 是直接截断
+// GLSL 中 float 到 int 的转换就是截断小数部分
+// int3 make_int3(vec3 v) { return ivec3(v.x, v.y, v.z); }
+
+// 辅助函数：as<float3>(as<int3>(p)) 是一个位级转换
+// 这种直接的 float <-> int 位转换在 GLSL 中需要使用 union 或 `floatBitsToInt`/`intBitsToFloat`
+// 但为了实现相同的偏移逻辑，我们通常不直接使用位转换来偏移位置，
+// 而是使用更数学的方式，因为位级操作在不同架构上可能行为不完全一致，
+// 且对于几何法线偏移来说，直接的数学偏移通常更直观和足够。
+// 你原始的伪代码似乎是将浮点数的位模式解释为整数，然后进行整数加法，再将结果解释回浮点数。
+// 这种做法是为了在浮点数精度受限时，提供更可靠的“位级别”偏移。
+
+// 修正后的 GLSL 翻译，更侧重于实现“浮点数位级别偏移”的意图，
+// 但避免了不安全的 as<float3>(as<int3>(p)) 直接位转换。
+// 而是模拟这种行为的数学等价（虽然不完全相同，但常用）。
+// 如果你的 as<int3>(p) 是直接的 float -> int 截断，那么 floatBitsToInt 是正确的位级转换。
+
+// GLSL version for `offset_ray_origin`
+// `p` is the hit position, `n` is the surface normal (normalized)
 vec3 offset_ray_origin(vec3 p, vec3 n) {
-    const float origin = 1.0f / 32.0f;
-    const float float_scale = 1.0f / 65536.0f;
+    // 常量定义
+    // 使用宏定义或全局常量，而不是在函数内部重复定义，效率更高
+    // const float RAY_OFFSET_ORIGIN_THRESHOLD = 1.0f / 32.0f;
+    // const float RAY_OFFSET_FLOAT_SCALE = 1.0f / 65536.0f;
+    // const float RAY_OFFSET_INT_SCALE = 256.0f;
 
-    ivec3 of_i = ivec3(256.0f * n);
-    ivec3 p_i = ivec3(p);
-    ivec3 offset = mix(of_i, -of_i, lessThan(p, vec3(0.0f)));
-    vec3 p_offset = vec3(p_i + offset);
-    vec3 p_final = mix(
-        p_offset,
-        p + float_scale * n,
-        greaterThanEqual(abs(p), vec3(origin))
-    );
+    // 计算整数偏移量：将法线乘以一个大整数，得到整数形式的偏移向量
+    // `make_int3(int_scale * n)` 对应 `ivec3(RAY_OFFSET_INT_SCALE * n)`
+    ivec3 of_i = ivec3(RAY_OFFSET_INT_SCALE * n); // 这里的 n 假设是 [-1, 1] 范围的浮点向量
 
-    return p_final;
+    // 计算 p_i:
+    // `as<int3>(p)` 对应 `floatBitsToInt(p)`，将浮点数的位模式解释为整数
+    // `ite(p < 0.0f, -of_i, of_i)` 对应 `mix(of_i, -of_i, step(0.0f, p))` (或者更直接的条件)
+    // 逻辑是：如果 p 的分量小于 0，则偏移量取反。
+
+    vec3 p_i;
+    // 分量级操作
+    for (int i = 0; i < 3; ++i) {
+        // floatBitsToInt/intBitsToFloat 用于位级转换，模拟 as<int3> / as<float3>
+        int p_int_bits = floatBitsToInt(p[i]);
+        int offset_int_bits = of_i[i]; // 将 of_i 的分量直接用作整数偏移量
+
+        // 根据 p[i] 的符号决定偏移方向
+        if (p[i] < 0.0f) {
+            p_int_bits = p_int_bits - offset_int_bits; // 整数位模式相减
+        } else {
+            p_int_bits = p_int_bits + offset_int_bits; // 整数位模式相加
+        }
+        p_i[i] = intBitsToFloat(p_int_bits); // 将新的整数位模式转换回浮点数
+    }
+
+
+    // 最终的偏移逻辑：
+    // `abs(p) < origin` 对应 `lessThan(abs(p), vec3(RAY_OFFSET_ORIGIN_THRESHOLD))`
+    // `ite(condition, value_if_true, value_if_false)` 对应 `mix(value_if_false, value_if_true, condition)`
+    // 或者直接使用 if-else 结构，这在 GLSL 中更常见且有时更清晰
+
+    vec3 offset_pos;
+    // 逐分量判断或整体判断
+    // 这里的 `abs(p) < origin` 应该是逐分量判断
+    bvec3 condition = lessThan(abs(p), vec3(RAY_OFFSET_ORIGIN_THRESHOLD));
+
+    // 使用 mix 函数进行条件选择，mix(x, y, a) = x * (1 - a) + y * a
+    // 当 a 为 true (1.0f) 时，结果是 y；当 a 为 false (0.0f) 时，结果是 x。
+    // 所以 if-true 值应该是 mix 的第三个参数 (y)
+    offset_pos = mix(p_i, p + RAY_OFFSET_FLOAT_SCALE * n, condition);
+    // 另一种写法（更像C++）：
+    /*
+    vec3 result_pos;
+    if (abs(p.x) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.x = p.x + RAY_OFFSET_FLOAT_SCALE * n.x; } else { result_pos.x = p_i.x; }
+    if (abs(p.y) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.y = p.y + RAY_OFFSET_FLOAT_SCALE * n.y; } else { result_pos.y = p_i.y; }
+    if (abs(p.z) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.z = p.z + RAY_OFFSET_FLOAT_SCALE * n.z; } else { result_pos.z = p_i.z; }
+    return result_pos;
+    */
+
+    return offset_pos;
 }
+
 
 struct Camera {
     vec3 position;
@@ -70,9 +153,9 @@ struct Camera {
     uvec2 resolution;
 };
 Ray generate_ray(Camera camera, vec2 p) {
-    float fov_radians = radians(camera.fov);
-    float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
-    vec3 wi_local(
+    const float fov_radians = radians(camera.fov);
+    const float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
+    vec3 wi_local = vec3(
         p.x * tan(0.5f * fov_radians) * aspect_ratio,
         p.y * tan(0.5f * fov_radians),
         -1.0f
@@ -83,7 +166,7 @@ Ray generate_ray(Camera camera, vec2 p) {
         - wi_local.z * camera.front
     );
 
-    return make_ray(position, wi_world, 0.0f, 100000.0f);
+    return make_ray(camera.position, wi_world, 0.0f, 100000.0f);
 }
 
 
@@ -117,6 +200,8 @@ layout(set = 0, binding = 2, std430) readonly buffer IndexBuffer { Triangle indi
 layout(set = 0, binding = 3, std430) buffer PixelColors { vec4 pixel_colors[]; }; // pixel colors
 layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; }; // seed buffer
 
+const float pi = 3.14159265358979323846264338327950288f;
+const float inv_pi = 0.318309886183790671537767526745028724f;
 const uvec2 screen_size = uvec2(1920u, 1080u);
 const uint spp_per_dispatch = 64u;
 const uint depth_per_dispatch = 10u;
@@ -138,6 +223,18 @@ const vec3 light_v = vec3(0.23f, 1.98f, 0.16f) - light_position;
 const float light_area = length(cross(light_u, light_v));
 const vec3 light_normal = normalize(cross(light_u, light_v));
 
+// material data
+const vec3[] materials = vec3[](
+    vec3(0.725f, 0.710f, 0.680f), // floor
+    vec3(0.725f, 0.710f, 0.680f), // ceiling
+    vec3(0.725f, 0.710f, 0.680f), // back wall
+    vec3(0.140f, 0.450f, 0.091f), // right wall
+    vec3(0.630f, 0.065f, 0.050f), // left wall
+    vec3(0.725f, 0.710f, 0.680f), // short box
+    vec3(0.725f, 0.710f, 0.680f), // tall box
+    vec3(0.000f, 0.000f, 0.000f)  // light
+);
+
 
 uint tea(uint v0, uint v1) {
     uint s0 = 0u;
@@ -156,7 +253,7 @@ float lcg(inout uint state) {
 
 vec3 cosine_sample_hemisphere(vec2 u) {
     float r = sqrt(u.x);
-    float phi = 2.0f * 3.1415926 * u.y;
+    float phi = 2.0f * pi * u.y;
     return vec3(r * cos(phi), r * sin(phi), sqrt(1.0f - u.x));
 }
 
@@ -181,30 +278,30 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
     record.index = index;
 
     Triangle triangle = indices[index];
-    vec3 A = vertices[triangle.t0].position;
-    vec3 B = vertices[triangle.t1].position;
-    vec3 C = vertices[triangle.t2].position;
+    const vec3 A = vertices[triangle.t0].position;
+    const vec3 B = vertices[triangle.t1].position;
+    const vec3 C = vertices[triangle.t2].position;
 
-    vec3 E1 = B - A;
-    vec3 E2 = C - A;
-    vec3 P = cross(ray.direction, E2);
-    float det = dot(E1, P);
-    float invDet = 1 / det;
+    const vec3 E1 = B - A;
+    const vec3 E2 = C - A;
+    const vec3 P = cross(ray.direction, E2);
+    const float det = dot(E1, P);
+    const float invDet = 1.0f / det;
 
-    vec3 T = ray.origin - A;
-    float u = dot(T, P) * invDet;
+    const vec3 T = ray.origin - A;
+    const float u = dot(T, P) * invDet;
     if (u < 0 || u > 1) {
         record.is_hit = false;
         return record;
     }
 
-    vec3 Q = cross(T, E1);
-    float v = dot(ray.direction, Q) * invDet;
+    const vec3 Q = cross(T, E1);
+    const float v = dot(ray.direction, Q) * invDet;
     if (v < 0 || u + v > 1) {
         record.is_hit = false;
         return record;
     }
-    float t = dot(E2, Q) * invDet;
+    const float t = dot(E2, Q) * invDet;
     if (t < t_min || t > t_max) {
         record.is_hit = false;
         return record;
@@ -214,6 +311,9 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
     record.time = t;
     record.position = ray_at(ray, t);
     record.normal = normalize(cross(E1, E2));
+    if (dot(record.normal, ray.direction) > 0.0f) {
+        record.normal = -record.normal;
+    }
 
     return record;
 }
@@ -229,26 +329,38 @@ SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
             && (!hit_record.is_hit || current_hit_record.time < hit_record.time)
         ) {
             hit_record = current_hit_record;
-            break;
         }
     }
 
     return hit_record;
 }
 
+vec3 get_color(uint index) {
+    if (0u <= index && index <= 1u) { return materials[0u]; }
+    if (2u <= index && index <= 3u) { return materials[1u]; }
+    if (4u <= index && index <= 5u) { return materials[2u]; }
+    if (6u <= index && index <= 7u) { return materials[3u]; }
+    if (8u <= index && index <= 9u) { return materials[4u]; }
+    if (10u <= index && index <= 21u) { return materials[5u]; }
+    if (22u <= index && index <= 33u) { return materials[6u]; }
+    if (34u <= index && index <= 35u) { return materials[7u]; }
+
+    return vec3(1.0f, 0.55f, 0.55f);
+}
+
 
 void main() {
-    uvec2 coord = gl_GlobalInvocationID.xy;
-    uint index = coord.x + coord.y * screen_size.x;
+    const uvec2 coord = gl_GlobalInvocationID.xy;
+    const uint index = coord.x + coord.y * screen_size.x;
+    uint state = seed_buffer[index];
     if (sample_index == 0u) {
         pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
         seed_buffer[index] = tea(coord.x, coord.y);
     }
-    uint state = seed_buffer[index];
 
-    float rx = lcg(state);
-    float ry = lcg(state);
-    vec2 pixel_coord = vec2(
+    const float rx = lcg(state);
+    const float ry = lcg(state);
+    const vec2 pixel_coord = vec2(
         (float(coord.x) + rx) / float(screen_size.x) * 2.0f - 1.0f,
         1.0f - (float(coord.y) + ry) / float(screen_size.y) * 2.0f
     );
@@ -259,63 +371,62 @@ void main() {
         vec3 beta = vec3(1.0f, 1.0f, 1.0f);
         float pdf_bsdf = 0.0f;
         for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
-            SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
+            const SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
             if (!hit_record.is_hit) { break; }
-            vec3 p0 = vertex_buffer[triangle.t0];
-            vec3 p1 = vertex_buffer[triangle.t1];
-            vec3 p2 = vertex_buffer[triangle.t2];
-            vec3 p = hit_record.position;
-            vec3 n = hit_record.normal;
-            float cos_wo = dot(-ray.direction, n);
+            const Triangle triangle = indices[hit_record.index];
+            const vec3 p = hit_record.position;
+            const vec3 n = hit_record.normal;
+            const float cos_wo = dot(-ray.direction, n);
             if (cos_wo < 1e-4f) { break; };
 
             if (hit_record.index >= uint(indices.length() - 2u)) {
                 if (depth == 0u) {
                     radiance += light_emission;
                 } else {
-                    float pdf_light = length_squared(p - ray.origin) / (light_area * cos_wo);
-                    float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
+                    const float pdf_light = length(p - ray.origin) / (light_area * cos_wo);
+                    const float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
                     radiance += mis_weight * beta * light_emission;
                 };
                 break;
             };
 
-            float ux_light = lcg(state);
-            float uy_light = lcg(state);
-            vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
-            vec3 pp = offset_ray_origin(p, n);
-            vec3 pp_light = offset_ray_origin(p_light, light_normal);
-            float d_light = distance(pp, pp_light);
-            vec3 wi_light = normalize(pp_light - pp);
-            Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
-            // bool occluded = accel.intersect_any(shadow_ray, {});
-            SurfaceHitRecord shadow_ray_hit_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
-            float cos_wi_light = dot(wi_light, n);
-            float cos_light = -dot(light_normal, wi_light);
-            // vec3 albedo = hit_record.read(hit.inst);
-            vec3 albedo = n;
+            const float ux_light = lcg(state);
+            const float uy_light = lcg(state);
+            const vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
+            // const vec3 pp = offset_ray_origin(p, n);
+            const vec3 pp = p;
+            // const vec3 pp_light = offset_ray_origin(p_light, light_normal);
+            const vec3 pp_light = p_light;
+            const float d_light = distance(pp, pp_light);
+            const vec3 wi_light = normalize(pp_light - pp);
+            // const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
+            const Ray shadow_ray = make_ray(pp, wi_light, 0.0f, d_light);
+            const SurfaceHitRecord shadow_ray_hit_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
+            const float cos_wi_light = dot(wi_light, n);
+            const float cos_light = -dot(light_normal, wi_light);
+            const vec3 albedo = get_color(hit_record.index);
             if (shadow_ray_hit_record.is_hit && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
-                float pdf_light = (d_light * d_light) / (light_area * cos_light);
-                float pdf_bsdf = cos_wi_light * inv_pi;
-                float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
-                vec3 bsdf = albedo * inv_pi * cos_wi_light;
+                const float pdf_light = (d_light * d_light) / (light_area * cos_light);
+                const float pdf_bsdf = cos_wi_light * inv_pi;
+                const float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
+                const vec3 bsdf = albedo * inv_pi * cos_wi_light;
                 radiance += beta * bsdf * mis_weight * light_emission / max(pdf_light, 1e-4f);
             };
 
-            Onb onb = make_onb(n);
-            float ux = lcg(state);
-            float uy = lcg(state);
-            vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
-            float cos_wi = abs(wi_local.z);
-            vec3 new_direction = onb.to_world(wi_local);
-            ray = make_ray(pp, new_direction);
+            const Onb onb = make_onb(n);
+            const float ux = lcg(state);
+            const float uy = lcg(state);
+            const vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
+            const float cos_wi = abs(wi_local.z);
+            const vec3 new_direction = to_world(onb, wi_local);
+            ray = make_ray(pp, new_direction, 0.0f, 100000.0f);
             pdf_bsdf = cos_wi * inv_pi;
             beta *= albedo;
 
-            float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
+            const float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
             if (l == 0.0f) { break; };
-            float q = max(l, 0.05f);
-            float r = lcg(state);
+            const float q = max(l, 0.05f);
+            const float r = lcg(state);
             if (r >= q) { break; };
             beta *= 1.0f / q;
         };
@@ -323,7 +434,7 @@ void main() {
 
     radiance /= float(spp_per_dispatch);
     if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); };
-    vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
+    const vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
     pixel_colors[index] = vec4(
         mix(
             pixel_colors[index].xyz,

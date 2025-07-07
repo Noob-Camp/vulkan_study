@@ -101,11 +101,11 @@ inline void output_log(log_level lev, std::string msg, std::source_location cons
         std::chrono::current_zone(),
         std::chrono::high_resolution_clock::now()
     };
-    // msg = std::format("[{}] [{}] {}", now, details::log_level_name(lev), msg);
-    msg = std::format(
-        "[{}] [{}:{}] [{}] {}",
-        now, loc.file_name(), loc.line(), details::log_level_name(lev), msg
-    );
+    msg = std::format("[{}] [{}] {}", now, details::log_level_name(lev), msg);
+    // msg = std::format(
+    //     "[{}] [{}:{}] [{}] {}",
+    //     now, loc.file_name(), loc.line(), details::log_level_name(lev), msg
+    // );
     // if (g_log_file) {
     //     msg = std::format("[{}] [{}:{}] [{}] {}", now, loc.file_name(), loc.line(), details::log_level_name(lev), msg);
     //     g_log_file << msg + '\n';

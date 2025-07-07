@@ -1,0 +1,23 @@
+newmtl floor
+Kd 0.725 0.710 0.680
+
+newmtl ceiling
+Kd 0.725 0.710 0.680
+
+newmtl back_wall
+Kd 0.725 0.710 0.680
+
+newmtl right_wall
+Kd 0.140 0.450 0.091
+
+newmtl left_wall
+Kd 0.630 0.065 0.050
+
+newmtl short_box
+Kd 0.725 0.710 0.680
+
+newmtl tall_box
+Kd 0.725 0.710 0.680
+
+# newmtl light
+# Kd 0.000 0.000 0.000

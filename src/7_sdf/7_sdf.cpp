@@ -104,10 +104,12 @@ struct UniformBufferObject {
 struct Vertex {
     glm::vec3 position;
     glm::vec3 color;
+    glm::vec2 uv;
 
     bool operator==(const Vertex& other) const {
         return position == other.position
             && color == other.color
+            && uv == other.uv;
     }
 };
 namespace std {
@@ -695,7 +697,7 @@ private:
         std::vector<tinyobj::material_t> materials;
         std::string warn { ""s };
         std::string err { ""s };
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "./resource/square.obj")) {
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "./resource/cornell_box.obj", "./resource/cornell_box.mtl")) {
             minilog::log_fatal("{}", warn + err);
         }
 
@@ -709,7 +711,12 @@ private:
                         attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
                         attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
                     },
-                    .color = { 1.0f, 1.0f, 1.0f }
+                    .color = { 1.0f, 1.0f, 1.0f },
+                    .uv = {
+                        // attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
+                        // 1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
+                        0.0f, 0.0f // TODO: use texture
+                    }
                 };
                 if (unique_vertices.count(vertex) == 0) {
                     unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
@@ -719,12 +726,12 @@ private:
             }
         }
 
-        indices.reserve(flat_indices.size() / 3uz);
-        for (std::size_t i { 0uz }; i < flat_indices.size(); i += 3uz) {
+        indices.resize(flat_indices.size() / 3uz);
+        for (std::size_t i { 0uz }; i < indices.size(); ++i) {
             indices[i] = Triangle {
-                flat_indices[i + 0uz],
-                flat_indices[i + 1uz],
-                flat_indices[i + 2uz]
+                flat_indices[3uz * i + 0uz],
+                flat_indices[3uz * i + 1uz],
+                flat_indices[3uz * i + 2uz]
             };
         }
     }
@@ -742,9 +749,11 @@ private:
     }
 
     void create_vertex_buffer() {
-        for (auto& vertex : vertices) {
+        for (std::size_t i { 0uz }; i < vertices.size(); ++i) {
+            Vertex vertex = vertices[i];
             minilog::log_debug(
-                "position: {}, {}, {}",
+                "position-{}: {}, {}, {}",
+                i,
                 vertex.position.x,
                 vertex.position.y,
                 vertex.position.z
@@ -781,10 +790,11 @@ private:
     }
 
     void create_index_buffer() {
-        for (auto& triangle_index : indices) {
+        for (std::size_t i { 0uz }; i < indices.size(); ++i) {
+            Triangle triangle = indices[i];
             minilog::log_debug(
-                "triangle: {}, {}, {}",
-                triangle_index.t0, triangle_index.t1, triangle_index.t2
+                "triangle-{}: {}, {}, {}",
+                i, triangle.t0, triangle.t1, triangle.t2
             );
         }
 
@@ -865,11 +875,11 @@ private:
         );
 
         std::vector<std::uint32_t> test(width * height, 0u);
-        // for (std::uint32_t i { 0u }; i < width; ++i) {
-        //     for (std::uint32_t j { 0u }; j < height; ++j) {
-        //         test[i + j * width] = tea(i, j);
-        //     }
-        // }
+        for (std::uint32_t i { 0u }; i < width; ++i) {
+            for (std::uint32_t j { 0u }; j < height; ++j) {
+                test[i + j * width] = tea(i, j);
+            }
+        }
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
@@ -2108,15 +2118,15 @@ private:
         logical_device.bindImageMemory(image, imageMemory, 0u);
     }
 
-    // std::uint32_t tea(std::uint32_t v0, std::uint32_t v1) {
-    //     std::uint32_t s0 { 0u };
-    //     for (std::uint32_t n { 0u }; n < 4u; ++n) {
-    //         s0 += 0x9e3779b9u;
-    //         v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
-    //         v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
-    //     }
-    //     return v0;
-    // }
+    std::uint32_t tea(std::uint32_t v0, std::uint32_t v1) {
+        std::uint32_t s0 { 0u };
+        for (std::uint32_t n { 0u }; n < 4u; ++n) {
+            s0 += 0x9e3779b9u;
+            v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
+            v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
+        }
+        return v0;
+    }
 };
 
 
