@@ -240,13 +240,11 @@ SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
 void main() {
     uvec2 coord = gl_GlobalInvocationID.xy;
     uint index = coord.x + coord.y * screen_size.x;
-    uint state = seed_buffer[index];
     if (sample_index == 0u) {
         pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        seed_buffer[index] = state;
-        // return ;
+        seed_buffer[index] = tea(coord.x, coord.y);
     }
-    const vec3 pixel_color_last = pixel_colors[index].xyz;
+    uint state = seed_buffer[index];
 
     float rx = lcg(state);
     float ry = lcg(state);
@@ -271,7 +269,7 @@ void main() {
             float cos_wo = dot(-ray.direction, n);
             if (cos_wo < 1e-4f) { break; };
 
-            if (hit_record.index == uint(indices.length() - 1u)) {
+            if (hit_record.index >= uint(indices.length() - 2u)) {
                 if (depth == 0u) {
                     radiance += light_emission;
                 } else {
@@ -328,7 +326,7 @@ void main() {
     vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
     pixel_colors[index] = vec4(
         mix(
-            pixel_color_last,
+            pixel_colors[index].xyz,
             pixel_color.xyz,
             1.0f / (sample_index + 1.0f)
         ),
