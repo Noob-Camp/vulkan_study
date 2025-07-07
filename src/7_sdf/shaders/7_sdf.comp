@@ -6,6 +6,18 @@ struct Onb {
     vec3 binormal;
     vec3 normal;
 };
+Onb make_onb(vec3 normal) {
+    float sign = sign(normal.z);
+    float a = -1.0f / (sign + normal.z);
+    float b = a * normal.x * normal.y;
+    Onb onb = Onb(
+        vec3(1.0f + sign * a * normal.x * normal.x, sign * b, -sign * normal.x),
+        vec3(b, sign + a * normal.y * normal.y, -normal.y),
+        normal
+    );
+
+    return onb;
+}
 vec3 to_world(Onb onb, vec3 v) {
     return v.x * onb.tangent
          + v.y * onb.binormal
@@ -20,11 +32,13 @@ struct Ray {
     float t_max;
 };
 Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
-    Ray ray;
-    ray.origin = origin;
-    ray.direction = direction;
-    ray.t_min = t_min;
-    ray.t_max = t_max;
+    Ray ray = Ray(
+        origin,
+        normalize(direction),
+        t_min,
+        t_max
+    );
+
     return ray;
 }
 vec3 ray_at(Ray ray, float t) {
@@ -47,98 +61,39 @@ vec3 offset_ray_origin(vec3 p, vec3 n) {
     return p_final;
 }
 
-// struct Camera {
-//     vec3 position;
-//     vec3 front;
-//     vec3 up;
-//     vec3 right;
-//     float fov;
-//     uvec2 resolution;
-// };
-// Ray generate_ray(Camera camera, vec2 p) {
-//     float fov_radians = radians(camera.fov);
-//     float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
-//     vec3 wi_local(
-//         p.x * tan(0.5f * fov_radians) * aspect_ratio,
-//         p.y * tan(0.5f * fov_radians),
-//         -1.0f
-//     );
-//     vec3 wi_world = normalize(
-//         wi_local.x * camera.right
-//         + wi_local.y * camera.up
-//         - wi_local.z * camera.front
-//     );
+struct Camera {
+    vec3 position;
+    vec3 front;
+    vec3 up;
+    vec3 right;
+    float fov;
+    uvec2 resolution;
+};
+Ray generate_ray(Camera camera, vec2 p) {
+    float fov_radians = radians(camera.fov);
+    float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
+    vec3 wi_local(
+        p.x * tan(0.5f * fov_radians) * aspect_ratio,
+        p.y * tan(0.5f * fov_radians),
+        -1.0f
+    );
+    vec3 wi_world = normalize(
+        wi_local.x * camera.right
+        + wi_local.y * camera.up
+        - wi_local.z * camera.front
+    );
 
-//     return make_ray(position, wi_world, 0.0f, 100000.0f);
-// }
+    return make_ray(position, wi_world, 0.0f, 100000.0f);
+}
 
 
 struct SurfaceHitRecord {
     bool is_hit;
-    float time;
     vec3 position;
+    float time;
     vec3 normal;
+    uint index;
 };
-SurfaceHitRecord hit_surface(
-    Ray ray,
-    vec3 A, vec3 B, vec3 C,
-    float t_min, float t_max
-) {
-    SurfaceHitRecord record;
-
-    vec3 E1 = B - A;
-    vec3 E2 = C - A;
-    vec3 P = cross(ray.direction, E2);
-    float det = dot(E1, P);
-    float invDet = 1 / det;
-
-    vec3 T = ray.origin - A;
-    float u = dot(T, P) * invDet;
-    if (u < 0 || u > 1) {
-        record.is_hit = false;
-        return record;
-    }
-
-    vec3 Q = cross(T, E1);
-    float v = dot(ray.direction, Q) * invDet;
-    if (v < 0 || u + v > 1) {
-        record.is_hit = false;
-        return record;
-    }
-    float t = dot(E2, Q) * invDet;
-    if (t < t_min || t > t_max) {
-        record.is_hit = false;
-        return record;
-    }
-
-    record.is_hit = true;
-    record.time = t;
-    record.position = ray_at(ray, t);
-    record.normal = normalize(cross(E1, E2));
-
-    return record;
-}
-// SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
-//     SurfaceHitRecord hit_record;
-//     hit_record.is_hit = false;
-//     hit_record.time = 100000.0f;
-//     for (uint i = 0u; i < indices.length(); ++i) {
-//         Triangle triangle = indices[i];
-//         vec3 v0 = vertices[triangle.t0].position;
-//         vec3 v1 = vertices[triangle.t1].position;
-//         vec3 v2 = vertices[triangle.t2].position;
-//         SurfaceHitRecord current_hit_record = hit_surface(ray, v0, v1, v2, 0.0f, 100000.0f);
-//         if (
-//             current_hit_record.is_hit
-//             && (!hit_record.is_hit || current_hit_record.time < hit_record.time)
-//         ) {
-//             hit_record = current_hit_record;
-//             break;
-//         }
-//     }
-
-//     return hit_record;
-// }
 
 
 struct Vertex {
@@ -166,6 +121,14 @@ const uvec2 screen_size = uvec2(1920u, 1080u);
 const uint spp_per_dispatch = 64u;
 const uint depth_per_dispatch = 10u;
 const float hdr2ldr_scale = 2.0f;
+const Camera camera = Camera(
+    vec3(-0.01f, 0.995f, 5.0f), // position
+    vec3(0.0f, 0.0f, -1.0f),    // front
+    vec3(0.0f, 1.0f, 0.0f),     // up
+    vec3(1.0f, 0.0f, 0.0f),     // right
+    27.8f,                      // fov
+    screen_size                 // resolution
+);
 
 // light data
 const vec3 light_emission = vec3(17.0f, 12.0f, 4.0f);
@@ -211,6 +174,68 @@ vec3 linear_to_srgb(vec3 x) {
     return clamp(srgb_result, 0.0f, 1.0f);
 }
 
+SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
+    SurfaceHitRecord record;
+    record.is_hit = false;
+    record.time = 100000.0f;
+    record.index = index;
+
+    Triangle triangle = indices[index];
+    vec3 A = vertices[triangle.t0].position;
+    vec3 B = vertices[triangle.t1].position;
+    vec3 C = vertices[triangle.t2].position;
+
+    vec3 E1 = B - A;
+    vec3 E2 = C - A;
+    vec3 P = cross(ray.direction, E2);
+    float det = dot(E1, P);
+    float invDet = 1 / det;
+
+    vec3 T = ray.origin - A;
+    float u = dot(T, P) * invDet;
+    if (u < 0 || u > 1) {
+        record.is_hit = false;
+        return record;
+    }
+
+    vec3 Q = cross(T, E1);
+    float v = dot(ray.direction, Q) * invDet;
+    if (v < 0 || u + v > 1) {
+        record.is_hit = false;
+        return record;
+    }
+    float t = dot(E2, Q) * invDet;
+    if (t < t_min || t > t_max) {
+        record.is_hit = false;
+        return record;
+    }
+
+    record.is_hit = true;
+    record.time = t;
+    record.position = ray_at(ray, t);
+    record.normal = normalize(cross(E1, E2));
+
+    return record;
+}
+
+SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
+    SurfaceHitRecord hit_record;
+    hit_record.is_hit = false;
+    hit_record.time = 100000.0f;
+    for (uint i = 0u; i < indices.length(); ++i) {
+        SurfaceHitRecord current_hit_record = hit_surface(ray, i, 0.0f, 100000.0f);
+        if (
+            current_hit_record.is_hit
+            && (!hit_record.is_hit || current_hit_record.time < hit_record.time)
+        ) {
+            hit_record = current_hit_record;
+            break;
+        }
+    }
+
+    return hit_record;
+}
+
 
 void main() {
     uvec2 coord = gl_GlobalInvocationID.xy;
@@ -225,91 +250,82 @@ void main() {
 
     float rx = lcg(state);
     float ry = lcg(state);
-    // vec2 pixel_coord(
-    //     (float(coord.x) + rx) / float(screen_size.x) * 2.0f - 1.0f,
-    //     1.0f - (float(coord.y) + ry) / float(screen_size.y) * 2.0f
-    // );
+    vec2 pixel_coord = vec2(
+        (float(coord.x) + rx) / float(screen_size.x) * 2.0f - 1.0f,
+        1.0f - (float(coord.y) + ry) / float(screen_size.y) * 2.0f
+    );
 
-    // vec3 radiance(0.0f, 0.0f, 0.0f);
-    // for (uint i = 0u; i < spp_per_dispatch; ++i) {
-    //     Ray ray = generate_ray(camera, pixel_coord);
-    //     vec3 beta(1.0f, 1.0f, 1.0f);
-    //     float pdf_bsdf = 0.0f;
-    //     for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
-    //         SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
-    //         if (!hit_record.is_hit) { break; }
-    //         vec3 p0 = vertex_buffer[triangle.t0];
-    //         vec3 p1 = vertex_buffer[triangle.t1];
-    //         vec3 p2 = vertex_buffer[triangle.t2];
-    //         vec3 p = hit_record.position;
-    //         vec3 n = hit_record.normal;
-    //         float cos_wo = dot(-ray.direction, n);
-    //         if (cos_wo < 1e-4f) { break; };
+    vec3 radiance = vec3(0.0f, 0.0f, 0.0f);
+    for (uint i = 0u; i < spp_per_dispatch; ++i) {
+        Ray ray = generate_ray(camera, pixel_coord);
+        vec3 beta = vec3(1.0f, 1.0f, 1.0f);
+        float pdf_bsdf = 0.0f;
+        for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
+            SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
+            if (!hit_record.is_hit) { break; }
+            vec3 p0 = vertex_buffer[triangle.t0];
+            vec3 p1 = vertex_buffer[triangle.t1];
+            vec3 p2 = vertex_buffer[triangle.t2];
+            vec3 p = hit_record.position;
+            vec3 n = hit_record.normal;
+            float cos_wo = dot(-ray.direction, n);
+            if (cos_wo < 1e-4f) { break; };
 
-    //         if (hit.inst == uint(meshes.size() - 1u)) {
-    //             if (depth == 0u) {
-    //                 radiance += light_emission;
-    //             } else {
-    //                 float pdf_light = length_squared(p - ray.origin) / (light_area * cos_wo);
-    //                 float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
-    //                 radiance += mis_weight * beta * light_emission;
-    //             };
-    //             break;
-    //         };
+            if (hit_record.index == uint(indices.length() - 1u)) {
+                if (depth == 0u) {
+                    radiance += light_emission;
+                } else {
+                    float pdf_light = length_squared(p - ray.origin) / (light_area * cos_wo);
+                    float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
+                    radiance += mis_weight * beta * light_emission;
+                };
+                break;
+            };
 
-    //         float ux_light = lcg(state);
-    //         float uy_light = lcg(state);
-    //         vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
-    //         vec3 pp = offset_ray_origin(p, n);
-    //         vec3 pp_light = offset_ray_origin(p_light, light_normal);
-    //         float d_light = distance(pp, pp_light);
-    //         vec3 wi_light = normalize(pp_light - pp);
-    //         Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
-    //         bool occluded = accel.intersect_any(shadow_ray, {});
-    //         float cos_wi_light = dot(wi_light, n);
-    //         float cos_light = -dot(light_normal, wi_light);
-    //         vec3 albedo = materials.read(hit.inst);
-    //         if ((!occluded) && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
-    //             float pdf_light = (d_light * d_light) / (light_area * cos_light);
-    //             float pdf_bsdf = cos_wi_light * inv_pi;
-    //             float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
-    //             vec3 bsdf = albedo * inv_pi * cos_wi_light;
-    //             radiance += beta * bsdf * mis_weight * light_emission / max(pdf_light, 1e-4f);
-    //         };
+            float ux_light = lcg(state);
+            float uy_light = lcg(state);
+            vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
+            vec3 pp = offset_ray_origin(p, n);
+            vec3 pp_light = offset_ray_origin(p_light, light_normal);
+            float d_light = distance(pp, pp_light);
+            vec3 wi_light = normalize(pp_light - pp);
+            Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
+            // bool occluded = accel.intersect_any(shadow_ray, {});
+            SurfaceHitRecord shadow_ray_hit_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
+            float cos_wi_light = dot(wi_light, n);
+            float cos_light = -dot(light_normal, wi_light);
+            // vec3 albedo = hit_record.read(hit.inst);
+            vec3 albedo = n;
+            if (shadow_ray_hit_record.is_hit && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
+                float pdf_light = (d_light * d_light) / (light_area * cos_light);
+                float pdf_bsdf = cos_wi_light * inv_pi;
+                float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
+                vec3 bsdf = albedo * inv_pi * cos_wi_light;
+                radiance += beta * bsdf * mis_weight * light_emission / max(pdf_light, 1e-4f);
+            };
 
-    //         Onb onb = make_onb(n);
-    //         float ux = lcg(state);
-    //         float uy = lcg(state);
-    //         vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
-    //         float cos_wi = abs(wi_local.z);
-    //         vec3 new_direction = onb.to_world(wi_local);
-    //         ray = make_ray(pp, new_direction);
-    //         pdf_bsdf = cos_wi * inv_pi;
-    //         beta *= albedo;
+            Onb onb = make_onb(n);
+            float ux = lcg(state);
+            float uy = lcg(state);
+            vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
+            float cos_wi = abs(wi_local.z);
+            vec3 new_direction = onb.to_world(wi_local);
+            ray = make_ray(pp, new_direction);
+            pdf_bsdf = cos_wi * inv_pi;
+            beta *= albedo;
 
-    //         float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
-    //         if (l == 0.0f) { break; };
-    //         float q = max(l, 0.05f);
-    //         float r = lcg(state);
-    //         if (r >= q) { break; };
-    //         beta *= 1.0f / q;
-    //     };
-    // };
+            float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
+            if (l == 0.0f) { break; };
+            float q = max(l, 0.05f);
+            float r = lcg(state);
+            if (r >= q) { break; };
+            beta *= 1.0f / q;
+        };
+    };
 
-    // radiance /= float(spp_per_dispatch);
-    // if (isnan(radiance)) { radiance = vec3(0.0f, 0.0f, 0.0f); };
-    // pixel_colors[index] = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
-    vec4 pixel_color = vec4(rx, rx, rx, 1.0f);
-    // pixel_color = vec4(
-    //     linear_to_srgb(
-    //         clamp(
-    //             pixel_color.xyz / pixel_color.w * hdr2ldr_scale,
-    //             0.0f,
-    //             1.0f
-    //         )
-    //     ),
-    //     pixel_color.w
-    // );
+    radiance /= float(spp_per_dispatch);
+    if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); };
+    vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
     pixel_colors[index] = vec4(
         mix(
             pixel_color_last,
