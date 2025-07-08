@@ -92,11 +92,10 @@ Ray generate_ray(Camera camera, vec2 p) {
 
 
 struct SurfaceHitRecord {
-    bool is_hit;
-    vec3 position;
+    uint inst;
+    uint prim;
+    vec2 bary;
     float time;
-    vec3 normal;
-    uint index;
 };
 
 
@@ -182,11 +181,16 @@ float balanced_heuristic(float pdf_a, float pdf_b) {
     return pdf_a / max(pdf_a + pdf_b, 1e-4f);
 }
 
+vec3 triangle_interpolate(vec2 bary, vec3 p0, vec3 p1, vec3 p2) {
+    return bary.x * p0 + bary.y * p1 + (1.0f - bary.x - bary.y) * p2;
+}
+
 SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
     SurfaceHitRecord record;
-    record.is_hit = false;
+    record.inst = ~0u;
+    record.prim = ~0u;
+    record.bary = vec2(-1.0f);
     record.time = 100000.0f;
-    record.index = index;
 
     Triangle triangle = indices[index];
     const vec3 A = vertices[triangle.t0].position;
@@ -201,43 +205,33 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
 
     const vec3 T = ray.origin - A;
     const float u = dot(T, P) * invDet;
-    if (u < 0 || u > 1) {
-        record.is_hit = false;
-        return record;
-    }
+    if (u < 0 || u > 1) { return record; }
 
     const vec3 Q = cross(T, E1);
     const float v = dot(ray.direction, Q) * invDet;
-    if (v < 0 || u + v > 1) {
-        record.is_hit = false;
-        return record;
-    }
-    const float t = dot(E2, Q) * invDet;
-    if (t < t_min || t > t_max) {
-        record.is_hit = false;
-        return record;
-    }
+    if (v < 0 || u + v > 1) { return record; }
 
-    record.is_hit = true;
+    const float t = dot(E2, Q) * invDet;
+    if (t < t_min || t > t_max) { return record; }
+
+    record.prim = index;
+    record.bary = vec2(u, v);
     record.time = t;
-    record.position = ray_at(ray, t);
-    record.normal = normalize(cross(E1, E2));
-    if (dot(record.normal, ray.direction) > 0.0f) {
-        record.normal = -record.normal;
-    }
 
     return record;
 }
 
 SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
     SurfaceHitRecord hit_record;
-    hit_record.is_hit = false;
+    hit_record.inst = ~0u;
+    hit_record.prim = ~0u;
+    hit_record.bary = vec2(-1.0f);
     hit_record.time = 100000.0f;
     for (uint i = 0u; i < indices.length(); ++i) {
         SurfaceHitRecord current_hit_record = hit_surface(ray, i, 0.0f, 100000.0f);
         if (
-            current_hit_record.is_hit
-            && (!hit_record.is_hit || current_hit_record.time < hit_record.time)
+            current_hit_record.prim != ~0u
+            && (record.prim == ~0u || current_hit_record.time < hit_record.time)
         ) {
             hit_record = current_hit_record;
         }
@@ -283,14 +277,17 @@ void main() {
         float pdf_bsdf = 0.0f;
         for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
             const SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
-            if (!hit_record.is_hit) { break; }
-            const Triangle triangle = indices[hit_record.index];
-            const vec3 p = hit_record.position;
-            const vec3 n = hit_record.normal;
+            if (hit_record.prim == ~0u) { break; }
+            const Triangle triangle = indices[hit_record.prim];
+            const vec3 p0 = vertices[triangle.t0].position;
+            const vec3 p1 = vertices[triangle.t1].position;
+            const vec3 p2 = vertices[triangle.t2].position;
+            const vec3 p = triangle_interpolate(hit_record.bary, p0, p1, p2);
+            const vec3 n = normalize(cross(p1 - p0, p2 - p0));
             const float cos_wo = dot(-ray.direction, n);
-            if (cos_wo < 1e-4f) { break; };
+            if (cos_wo < 1e-4f) { break; }
 
-            if (hit_record.index >= uint(indices.length() - 2u)) {
+            if (hit_record.prim >= uint(indices.length() - 2u)) {
                 if (depth == 0u) {
                     radiance += light_emission;
                 } else {
@@ -299,7 +296,7 @@ void main() {
                     radiance += mis_weight * beta * light_emission;
                 };
                 break;
-            };
+            }
 
             const float ux_light = lcg(state);
             const float uy_light = lcg(state);
@@ -312,17 +309,17 @@ void main() {
             const vec3 wi_light = normalize(pp_light - pp);
             const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
             // const Ray shadow_ray = make_ray(pp, wi_light, 0.0f, d_light);
-            const SurfaceHitRecord shadow_ray_hit_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
+            const SurfaceHitRecord shadow_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
             const float cos_wi_light = dot(wi_light, n);
             const float cos_light = -dot(light_normal, wi_light);
-            const vec3 albedo = get_color(hit_record.index);
-            if (shadow_ray_hit_record.is_hit && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
+            const vec3 albedo = get_color(hit_record.prim);
+            if ((shadow_record.prim != ~0u) && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
                 const float pdf_light = (d_light * d_light) / (light_area * cos_light);
                 const float pdf_bsdf = cos_wi_light * inv_pi;
                 const float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
                 const vec3 bsdf = albedo * inv_pi * cos_wi_light;
                 radiance += beta * bsdf * mis_weight * light_emission / max(pdf_light, 1e-4f);
-            };
+            }
 
             const Onb onb = make_onb(n);
             const float ux = lcg(state);
@@ -340,8 +337,8 @@ void main() {
             const float r = lcg(state);
             if (r >= q) { break; };
             beta *= 1.0f / q;
-        };
-    };
+        }
+    }
 
     radiance /= float(spp_per_dispatch);
     if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); };
