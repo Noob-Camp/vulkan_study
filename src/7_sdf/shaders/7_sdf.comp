@@ -41,9 +41,7 @@ Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
 
     return ray;
 }
-vec3 ray_at(Ray ray, float t) {
-    return ray.origin + t * ray.direction;
-}
+vec3 ray_at(Ray ray, float t) { return ray.origin + t * ray.direction; }
 vec3 offset_ray_origin(vec3 p, vec3 n) {
     const float origin = 1.0f / 32.0f;
     const float float_scale = 1.0f / 65536.0f;
@@ -51,9 +49,9 @@ vec3 offset_ray_origin(vec3 p, vec3 n) {
 
     const ivec3 of_i = ivec3(int_scale * n);
     const vec3 p_i = vec3(
-        int(p.x) + (p.x < 0.0f ? -of_i.x : of_i.x),
-        int(p.y) + (p.y < 0.0f ? -of_i.y : of_i.y),
-        int(p.z) + (p.z < 0.0f ? -of_i.z : of_i.z)
+        intBitsToFloat(floatBitsToInt(p.x) + (p.x < 0.0f ? -of_i.x : of_i.x)),
+        intBitsToFloat(floatBitsToInt(p.y) + (p.y < 0.0f ? -of_i.y : of_i.y)),
+        intBitsToFloat(floatBitsToInt(p.z) + (p.z < 0.0f ? -of_i.z : of_i.z))
     );
     const vec3 p_final = vec3(
         abs(p.x) < origin ? p.x + float_scale * n.x : p_i.x,
@@ -123,7 +121,7 @@ layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; }; 
 const float pi = 3.14159265358979323846264338327950288f;
 const float inv_pi = 0.318309886183790671537767526745028724f;
 const uvec2 screen_size = uvec2(1920u, 1080u);
-const uint spp_per_dispatch = 64u;
+const uint spp_per_dispatch = 1u;
 const uint depth_per_dispatch = 10u;
 const float hdr2ldr_scale = 2.0f;
 const Camera camera = Camera(
@@ -182,7 +180,7 @@ float balanced_heuristic(float pdf_a, float pdf_b) {
 }
 
 vec3 triangle_interpolate(vec2 bary, vec3 p0, vec3 p1, vec3 p2) {
-    return bary.x * p0 + bary.y * p1 + (1.0f - bary.x - bary.y) * p2;
+    return (1.0f - bary.x - bary.y) * p0 + bary.x * p1 + bary.y * p2;
 }
 
 SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
@@ -205,11 +203,11 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
 
     const vec3 T = ray.origin - A;
     const float u = dot(T, P) * invDet;
-    if (u < 0 || u > 1) { return record; }
+    if (u < 0.0f || u > 1.0f) { return record; }
 
     const vec3 Q = cross(T, E1);
     const float v = dot(ray.direction, Q) * invDet;
-    if (v < 0 || u + v > 1) { return record; }
+    if (v < 0.0f || u + v > 1.0f) { return record; }
 
     const float t = dot(E2, Q) * invDet;
     if (t < t_min || t > t_max) { return record; }
@@ -231,13 +229,23 @@ SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
         SurfaceHitRecord current_hit_record = hit_surface(ray, i, 0.0f, 100000.0f);
         if (
             current_hit_record.prim != ~0u
-            && (record.prim == ~0u || current_hit_record.time < hit_record.time)
+            && (hit_record.prim == ~0u || current_hit_record.time < hit_record.time)
         ) {
             hit_record = current_hit_record;
         }
     }
 
     return hit_record;
+}
+
+bool intersect_any(Ray ray, float t_min, float t_max) {
+    SurfaceHitRecord hit_record = hit_scene(ray, t_min, t_max);
+    if (
+        (hit_record.prim == ~0u)
+        || (hit_record.prim >= uint(indices.length() - 2u))
+    ) { return false; }
+
+    return true;
 }
 
 vec3 get_color(uint index) {
@@ -250,7 +258,7 @@ vec3 get_color(uint index) {
     if (22u <= index && index <= 33u) { return materials[6u]; }
     if (34u <= index && index <= 35u) { return materials[7u]; }
 
-    return vec3(1.0f, 0.55f, 0.55f);
+    return vec3(1.0f, 1.0f, 1.0f);
 }
 
 
@@ -302,18 +310,15 @@ void main() {
             const float uy_light = lcg(state);
             const vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
             const vec3 pp = offset_ray_origin(p, n);
-            // const vec3 pp = p;
             const vec3 pp_light = offset_ray_origin(p_light, light_normal);
-            // const vec3 pp_light = p_light;
             const float d_light = distance(pp, pp_light);
             const vec3 wi_light = normalize(pp_light - pp);
             const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
-            // const Ray shadow_ray = make_ray(pp, wi_light, 0.0f, d_light);
-            const SurfaceHitRecord shadow_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
+            const bool occluded = intersect_any(shadow_ray, 0.0f, 100000.0f);
             const float cos_wi_light = dot(wi_light, n);
             const float cos_light = -dot(light_normal, wi_light);
             const vec3 albedo = get_color(hit_record.prim);
-            if ((shadow_record.prim != ~0u) && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
+            if ((!occluded) && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
                 const float pdf_light = (d_light * d_light) / (light_area * cos_light);
                 const float pdf_bsdf = cos_wi_light * inv_pi;
                 const float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
