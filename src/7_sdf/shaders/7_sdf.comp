@@ -44,103 +44,24 @@ Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
 vec3 ray_at(Ray ray, float t) {
     return ray.origin + t * ray.direction;
 }
-// vec3 offset_ray_origin(vec3 p, vec3 n) {
-//     const float origin = 1.0f / 32.0f;
-//     const float float_scale = 1.0f / 65536.0f;
-
-//     ivec3 of_i = ivec3(256.0f * n);
-//     ivec3 p_i = ivec3(p);
-//     ivec3 offset = mix(of_i, -of_i, lessThan(p, vec3(0.0f)));
-//     vec3 p_offset = vec3(p_i + offset);
-//     vec3 p_final = mix(
-//         p_offset,
-//         p + float_scale * n,
-//         greaterThanEqual(abs(p), vec3(origin))
-//     );
-
-//     return p_final;
-// }
-const float RAY_OFFSET_ORIGIN_THRESHOLD = 1.0f / 32.0f; // 0.03125
-const float RAY_OFFSET_FLOAT_SCALE = 1.0f / 65536.0f;   // 0.0000152587890625
-const float RAY_OFFSET_INT_SCALE = 256.0f;
-
-// 辅助函数：将 float3 转换为 int3 (按分量四舍五入或截断，取决于上下文)
-// 这里假设 make_int3 是直接截断
-// GLSL 中 float 到 int 的转换就是截断小数部分
-// int3 make_int3(vec3 v) { return ivec3(v.x, v.y, v.z); }
-
-// 辅助函数：as<float3>(as<int3>(p)) 是一个位级转换
-// 这种直接的 float <-> int 位转换在 GLSL 中需要使用 union 或 `floatBitsToInt`/`intBitsToFloat`
-// 但为了实现相同的偏移逻辑，我们通常不直接使用位转换来偏移位置，
-// 而是使用更数学的方式，因为位级操作在不同架构上可能行为不完全一致，
-// 且对于几何法线偏移来说，直接的数学偏移通常更直观和足够。
-// 你原始的伪代码似乎是将浮点数的位模式解释为整数，然后进行整数加法，再将结果解释回浮点数。
-// 这种做法是为了在浮点数精度受限时，提供更可靠的“位级别”偏移。
-
-// 修正后的 GLSL 翻译，更侧重于实现“浮点数位级别偏移”的意图，
-// 但避免了不安全的 as<float3>(as<int3>(p)) 直接位转换。
-// 而是模拟这种行为的数学等价（虽然不完全相同，但常用）。
-// 如果你的 as<int3>(p) 是直接的 float -> int 截断，那么 floatBitsToInt 是正确的位级转换。
-
-// GLSL version for `offset_ray_origin`
-// `p` is the hit position, `n` is the surface normal (normalized)
 vec3 offset_ray_origin(vec3 p, vec3 n) {
-    // 常量定义
-    // 使用宏定义或全局常量，而不是在函数内部重复定义，效率更高
-    // const float RAY_OFFSET_ORIGIN_THRESHOLD = 1.0f / 32.0f;
-    // const float RAY_OFFSET_FLOAT_SCALE = 1.0f / 65536.0f;
-    // const float RAY_OFFSET_INT_SCALE = 256.0f;
+    const float origin = 1.0f / 32.0f;
+    const float float_scale = 1.0f / 65536.0f;
+    const float int_scale = 256.0f;
 
-    // 计算整数偏移量：将法线乘以一个大整数，得到整数形式的偏移向量
-    // `make_int3(int_scale * n)` 对应 `ivec3(RAY_OFFSET_INT_SCALE * n)`
-    ivec3 of_i = ivec3(RAY_OFFSET_INT_SCALE * n); // 这里的 n 假设是 [-1, 1] 范围的浮点向量
+    const ivec3 of_i = ivec3(int_scale * n);
+    const vec3 p_i = vec3(
+        float(int(p.x) + ((p.x < 0.0f) ? -of_i.x : of_i.x)),
+        float(int(p.y) + ((p.y < 0.0f) ? -of_i.y : of_i.y)),
+        float(int(p.z) + ((p.z < 0.0f) ? -of_i.z : of_i.z))
+    );
+    const vec3 p_final = vec3(
+        abs(p.x) < origin ? p.x + float_scale * n.x : p_i.x,
+        abs(p.y) < origin ? p.y + float_scale * n.y : p_i.y,
+        abs(p.z) < origin ? p.z + float_scale * n.z : p_i.z
+    );
 
-    // 计算 p_i:
-    // `as<int3>(p)` 对应 `floatBitsToInt(p)`，将浮点数的位模式解释为整数
-    // `ite(p < 0.0f, -of_i, of_i)` 对应 `mix(of_i, -of_i, step(0.0f, p))` (或者更直接的条件)
-    // 逻辑是：如果 p 的分量小于 0，则偏移量取反。
-
-    vec3 p_i;
-    // 分量级操作
-    for (int i = 0; i < 3; ++i) {
-        // floatBitsToInt/intBitsToFloat 用于位级转换，模拟 as<int3> / as<float3>
-        int p_int_bits = floatBitsToInt(p[i]);
-        int offset_int_bits = of_i[i]; // 将 of_i 的分量直接用作整数偏移量
-
-        // 根据 p[i] 的符号决定偏移方向
-        if (p[i] < 0.0f) {
-            p_int_bits = p_int_bits - offset_int_bits; // 整数位模式相减
-        } else {
-            p_int_bits = p_int_bits + offset_int_bits; // 整数位模式相加
-        }
-        p_i[i] = intBitsToFloat(p_int_bits); // 将新的整数位模式转换回浮点数
-    }
-
-
-    // 最终的偏移逻辑：
-    // `abs(p) < origin` 对应 `lessThan(abs(p), vec3(RAY_OFFSET_ORIGIN_THRESHOLD))`
-    // `ite(condition, value_if_true, value_if_false)` 对应 `mix(value_if_false, value_if_true, condition)`
-    // 或者直接使用 if-else 结构，这在 GLSL 中更常见且有时更清晰
-
-    vec3 offset_pos;
-    // 逐分量判断或整体判断
-    // 这里的 `abs(p) < origin` 应该是逐分量判断
-    bvec3 condition = lessThan(abs(p), vec3(RAY_OFFSET_ORIGIN_THRESHOLD));
-
-    // 使用 mix 函数进行条件选择，mix(x, y, a) = x * (1 - a) + y * a
-    // 当 a 为 true (1.0f) 时，结果是 y；当 a 为 false (0.0f) 时，结果是 x。
-    // 所以 if-true 值应该是 mix 的第三个参数 (y)
-    offset_pos = mix(p_i, p + RAY_OFFSET_FLOAT_SCALE * n, condition);
-    // 另一种写法（更像C++）：
-    /*
-    vec3 result_pos;
-    if (abs(p.x) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.x = p.x + RAY_OFFSET_FLOAT_SCALE * n.x; } else { result_pos.x = p_i.x; }
-    if (abs(p.y) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.y = p.y + RAY_OFFSET_FLOAT_SCALE * n.y; } else { result_pos.y = p_i.y; }
-    if (abs(p.z) < RAY_OFFSET_ORIGIN_THRESHOLD) { result_pos.z = p.z + RAY_OFFSET_FLOAT_SCALE * n.z; } else { result_pos.z = p_i.z; }
-    return result_pos;
-    */
-
-    return offset_pos;
+    return p_final;
 }
 
 
@@ -383,14 +304,14 @@ void main() {
             const float ux_light = lcg(state);
             const float uy_light = lcg(state);
             const vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
-            // const vec3 pp = offset_ray_origin(p, n);
-            const vec3 pp = p;
-            // const vec3 pp_light = offset_ray_origin(p_light, light_normal);
-            const vec3 pp_light = p_light;
+            const vec3 pp = offset_ray_origin(p, n);
+            // const vec3 pp = p;
+            const vec3 pp_light = offset_ray_origin(p_light, light_normal);
+            // const vec3 pp_light = p_light;
             const float d_light = distance(pp, pp_light);
             const vec3 wi_light = normalize(pp_light - pp);
-            // const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
-            const Ray shadow_ray = make_ray(pp, wi_light, 0.0f, d_light);
+            const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
+            // const Ray shadow_ray = make_ray(pp, wi_light, 0.0f, d_light);
             const SurfaceHitRecord shadow_ray_hit_record = hit_scene(shadow_ray, 0.0f, 100000.0f);
             const float cos_wi_light = dot(wi_light, n);
             const float cos_light = -dot(light_normal, wi_light);
