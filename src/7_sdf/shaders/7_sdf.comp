@@ -51,9 +51,9 @@ vec3 offset_ray_origin(vec3 p, vec3 n) {
 
     const ivec3 of_i = ivec3(int_scale * n);
     const vec3 p_i = vec3(
-        float(int(p.x) + ((p.x < 0.0f) ? -of_i.x : of_i.x)),
-        float(int(p.y) + ((p.y < 0.0f) ? -of_i.y : of_i.y)),
-        float(int(p.z) + ((p.z < 0.0f) ? -of_i.z : of_i.z))
+        int(p.x) + (p.x < 0.0f ? -of_i.x : of_i.x),
+        int(p.y) + (p.y < 0.0f ? -of_i.y : of_i.y),
+        int(p.z) + (p.z < 0.0f ? -of_i.z : of_i.z)
     );
     const vec3 p_final = vec3(
         abs(p.x) < origin ? p.x + float_scale * n.x : p_i.x,
