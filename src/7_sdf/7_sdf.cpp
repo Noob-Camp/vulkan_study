@@ -875,11 +875,6 @@ private:
         );
 
         std::vector<std::uint32_t> test(width * height, 0u);
-        for (std::uint32_t i { 0u }; i < width; ++i) {
-            for (std::uint32_t j { 0u }; j < height; ++j) {
-                test[i + j * width] = tea(i, j);
-            }
-        }
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
@@ -2116,16 +2111,6 @@ private:
         }
 
         logical_device.bindImageMemory(image, imageMemory, 0u);
-    }
-
-    std::uint32_t tea(std::uint32_t v0, std::uint32_t v1) {
-        std::uint32_t s0 { 0u };
-        for (std::uint32_t n { 0u }; n < 4u; ++n) {
-            s0 += 0x9e3779b9u;
-            v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
-            v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
-        }
-        return v0;
     }
 };
 

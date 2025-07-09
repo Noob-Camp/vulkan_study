@@ -102,6 +102,7 @@ struct Vertex {
     vec3 color;
 };
 
+
 struct Triangle {
     uint t0;
     uint t1;
@@ -112,7 +113,7 @@ struct Triangle {
 // std140 (uniform) / std430 (SSBO)
 // Align memory with a size of 4 bytes
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(set = 0, binding = 0, std140) uniform UniformBuffer { uint sample_index; }; // uniform buffer
+layout(set = 0, binding = 0, std140) uniform UniformBuffer { uint sample_index; }; // uniform buffer(read-only)
 layout(set = 0, binding = 1, std430) readonly buffer VertexBuffer { Vertex vertices[]; }; // vertex buffer
 layout(set = 0, binding = 2, std430) readonly buffer IndexBuffer { Triangle indices[]; }; // index buffer
 layout(set = 0, binding = 3, std430) buffer PixelColors { vec4 pixel_colors[]; }; // pixel colors
@@ -265,12 +266,12 @@ vec3 get_color(uint index) {
 void main() {
     const uvec2 coord = gl_GlobalInvocationID.xy;
     const uint index = coord.x + coord.y * screen_size.x;
-    uint state = seed_buffer[index];
     if (sample_index == 0u) {
         pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
         seed_buffer[index] = tea(coord.x, coord.y);
     }
 
+    uint state = seed_buffer[index];
     const float rx = lcg(state);
     const float ry = lcg(state);
     const vec2 pixel_coord = vec2(
@@ -299,10 +300,11 @@ void main() {
                 if (depth == 0u) {
                     radiance += light_emission;
                 } else {
-                    const float pdf_light = length(p - ray.origin) / (light_area * cos_wo);
+                    const float distance = length(p - ray.origin);
+                    const float pdf_light = (distance * distance) / (light_area * cos_wo);
                     const float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
                     radiance += mis_weight * beta * light_emission;
-                };
+                }
                 break;
             }
 
@@ -337,16 +339,16 @@ void main() {
             beta *= albedo;
 
             const float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
-            if (l == 0.0f) { break; };
+            if (l == 0.0f) { break; }
             const float q = max(l, 0.05f);
             const float r = lcg(state);
-            if (r >= q) { break; };
+            if (r >= q) { break; }
             beta *= 1.0f / q;
         }
     }
 
     radiance /= float(spp_per_dispatch);
-    if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); };
+    if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); }
     const vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
     pixel_colors[index] = vec4(
         mix(
