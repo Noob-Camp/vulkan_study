@@ -28,16 +28,10 @@ vec3 to_world(Onb onb, vec3 v) {
 struct Ray {
     vec3 origin;
     vec3 direction;
-    float t_min;
     float t_max;
 };
-Ray make_ray(vec3 origin, vec3 direction, float t_min, float t_max) {
-    Ray ray = Ray(
-        origin,
-        normalize(direction),
-        t_min,
-        t_max
-    );
+Ray make_ray(vec3 origin, vec3 direction, float t_max) {
+    Ray ray = Ray(origin, normalize(direction), t_max);
 
     return ray;
 }
@@ -85,7 +79,7 @@ Ray generate_ray(Camera camera, vec2 p) {
         - wi_local.z * camera.front
     );
 
-    return make_ray(camera.position, wi_world, 0.0f, 100000.0f);
+    return make_ray(camera.position, wi_world, 100000.0f);
 }
 
 
@@ -184,12 +178,12 @@ vec3 triangle_interpolate(vec2 bary, vec3 p0, vec3 p1, vec3 p2) {
     return (1.0f - bary.x - bary.y) * p0 + bary.x * p1 + bary.y * p2;
 }
 
-SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
+SurfaceHitRecord hit_surface(Ray ray, uint index) {
     SurfaceHitRecord record;
     record.inst = ~0u;
     record.prim = ~0u;
     record.bary = vec2(-1.0f);
-    record.time = 100000.0f;
+    record.time = ray.t_max;
 
     Triangle triangle = indices[index];
     const vec3 A = vertices[triangle.t0].position;
@@ -211,7 +205,7 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
     if (v < 0.0f || u + v > 1.0f) { return record; }
 
     const float t = dot(E2, Q) * invDet;
-    if (t < t_min || t > t_max) { return record; }
+    if (t < 0.0f || t > ray.t_max) { return record; }
 
     record.prim = index;
     record.bary = vec2(u, v);
@@ -220,16 +214,16 @@ SurfaceHitRecord hit_surface(Ray ray, uint index, float t_min, float t_max) {
     return record;
 }
 
-SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
+SurfaceHitRecord hit_scene(Ray ray) {
     SurfaceHitRecord hit_record;
     hit_record.inst = ~0u;
     hit_record.prim = ~0u;
     hit_record.bary = vec2(-1.0f);
     hit_record.time = 100000.0f;
     for (uint i = 0u; i < indices.length(); ++i) {
-        SurfaceHitRecord current_hit_record = hit_surface(ray, i, 0.0f, 100000.0f);
+        SurfaceHitRecord current_hit_record = hit_surface(ray, i);
         if (
-            current_hit_record.prim != ~0u
+            (current_hit_record.prim != ~0u)
             && (hit_record.prim == ~0u || current_hit_record.time < hit_record.time)
         ) {
             hit_record = current_hit_record;
@@ -239,8 +233,8 @@ SurfaceHitRecord hit_scene(Ray ray, float t_min, float t_max) {
     return hit_record;
 }
 
-bool intersect_any(Ray ray, float t_min, float t_max) {
-    SurfaceHitRecord hit_record = hit_scene(ray, t_min, t_max);
+bool intersect_any(Ray ray) {
+    SurfaceHitRecord hit_record = hit_scene(ray);
     if (
         (hit_record.prim == ~0u)
         || (hit_record.prim >= uint(indices.length() - 2u))
@@ -285,7 +279,7 @@ void main() {
         vec3 beta = vec3(1.0f, 1.0f, 1.0f);
         float pdf_bsdf = 0.0f;
         for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
-            const SurfaceHitRecord hit_record = hit_scene(ray, 0.0f, 100000.0f);
+            const SurfaceHitRecord hit_record = hit_scene(ray);
             if (hit_record.prim == ~0u) { break; }
             const Triangle triangle = indices[hit_record.prim];
             const vec3 p0 = vertices[triangle.t0].position;
@@ -315,8 +309,8 @@ void main() {
             const vec3 pp_light = offset_ray_origin(p_light, light_normal);
             const float d_light = distance(pp, pp_light);
             const vec3 wi_light = normalize(pp_light - pp);
-            const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.0f, d_light);
-            const bool occluded = intersect_any(shadow_ray, 0.0f, 100000.0f);
+            const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, d_light);
+            const bool occluded = intersect_any(shadow_ray);
             const float cos_wi_light = dot(wi_light, n);
             const float cos_light = -dot(light_normal, wi_light);
             const vec3 albedo = get_color(hit_record.prim);
@@ -334,7 +328,7 @@ void main() {
             const vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
             const float cos_wi = abs(wi_local.z);
             const vec3 new_direction = to_world(onb, wi_local);
-            ray = make_ray(pp, new_direction, 0.0f, 100000.0f);
+            ray = make_ray(pp, new_direction, 100000.0f);
             pdf_bsdf = cos_wi * inv_pi;
             beta *= albedo;
 
