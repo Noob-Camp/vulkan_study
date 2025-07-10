@@ -2029,8 +2029,8 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
-        ubo.sample_index++;
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
+        ubo.sample_index++;
     }
 
     void record_compute_command_buffer(vk::CommandBuffer commandBuffer) {

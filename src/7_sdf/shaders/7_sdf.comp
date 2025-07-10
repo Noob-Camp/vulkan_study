@@ -7,9 +7,9 @@ struct Onb {
     vec3 normal;
 };
 Onb make_onb(vec3 normal) {
-    float sign = sign(normal.z);
-    float a = -1.0f / (sign + normal.z);
-    float b = a * normal.x * normal.y;
+    const float sign = sign(normal.z);
+    const float a = -1.0f / (sign + normal.z);
+    const float b = a * normal.x * normal.y;
     Onb onb = Onb(
         vec3(1.0f + sign * a * normal.x * normal.x, sign * b, -sign * normal.x),
         vec3(b, sign + a * normal.y * normal.y, -normal.y),
@@ -261,18 +261,17 @@ void main() {
     const uvec2 coord = gl_GlobalInvocationID.xy;
     const uint index = coord.x + coord.y * screen_size.x;
     if (sample_index == 0u) {
-        pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
         seed_buffer[index] = tea(coord.x, coord.y);
+        pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
-
     uint state = seed_buffer[index];
+
     const float rx = lcg(state);
     const float ry = lcg(state);
     const vec2 pixel_coord = vec2(
         (float(coord.x) + rx) / float(screen_size.x) * 2.0f - 1.0f,
         1.0f - (float(coord.y) + ry) / float(screen_size.y) * 2.0f
     );
-
     vec3 radiance = vec3(0.0f, 0.0f, 0.0f);
     for (uint i = 0u; i < spp_per_dispatch; ++i) {
         Ray ray = generate_ray(camera, pixel_coord);
@@ -343,11 +342,11 @@ void main() {
 
     radiance /= float(spp_per_dispatch);
     if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); }
-    const vec4 pixel_color = vec4(clamp(radiance, 0.0f, 30.0f), 1.0f);
+    const vec3 pixel_color = vec3(clamp(radiance, 0.0f, 30.0f));
     pixel_colors[index] = vec4(
         mix(
             pixel_colors[index].xyz,
-            pixel_color.xyz,
+            pixel_color,
             1.0f / (sample_index + 1.0f)
         ),
         1.0f
