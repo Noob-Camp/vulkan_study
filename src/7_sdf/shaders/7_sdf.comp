@@ -7,7 +7,8 @@ struct Onb {
     vec3 normal;
 };
 Onb make_onb(vec3 normal) {
-    const float sign = sign(normal.z);
+    float sign = sign(normal.z);
+    if (sign == 0.0f) { sign = 1.0f; }
     const float a = -1.0f / (sign + normal.z);
     const float b = a * normal.x * normal.y;
     Onb onb = Onb(
@@ -118,7 +119,6 @@ const float inv_pi = 0.318309886183790671537767526745028724f;
 const uvec2 screen_size = uvec2(1920u, 1080u);
 const uint spp_per_dispatch = 1u;
 const uint depth_per_dispatch = 10u;
-const float hdr2ldr_scale = 2.0f;
 const Camera camera = Camera(
     vec3(-0.01f, 0.995f, 5.0f), // position
     vec3(0.0f, 0.0f, -1.0f),    // front
@@ -219,7 +219,7 @@ SurfaceHitRecord hit_scene(Ray ray) {
     hit_record.inst = ~0u;
     hit_record.prim = ~0u;
     hit_record.bary = vec2(-1.0f);
-    hit_record.time = 100000.0f;
+    hit_record.time = ray.t_max;
     for (uint i = 0u; i < indices.length(); ++i) {
         SurfaceHitRecord current_hit_record = hit_surface(ray, i);
         if (

@@ -1744,7 +1744,7 @@ private:
     ) {
         for (const auto& surface_format : avaiableFormats) {
             if (
-                (surface_format.format == vk::Format::eB8G8R8A8Srgb)
+                (surface_format.format == vk::Format::eB8G8R8A8Unorm)
                 && (surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
             ) {
                 return surface_format;
