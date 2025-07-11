@@ -7,8 +7,7 @@ struct Onb {
     vec3 normal;
 };
 Onb make_onb(vec3 normal) {
-    float sign = sign(normal.z);
-    if (sign == 0.0f) { sign = 1.0f; }
+    const float sign = normal.z >= 0.0f ? 1.0f : -1.0f;
     const float a = -1.0f / (sign + normal.z);
     const float b = a * normal.x * normal.y;
     Onb onb = Onb(
@@ -32,9 +31,7 @@ struct Ray {
     float t_max;
 };
 Ray make_ray(vec3 origin, vec3 direction, float t_max) {
-    Ray ray = Ray(origin, normalize(direction), t_max);
-
-    return ray;
+    return Ray(origin, normalize(direction), t_max);
 }
 vec3 ray_at(Ray ray, float t) { return ray.origin + t * ray.direction; }
 vec3 offset_ray_origin(vec3 p, vec3 n) {
@@ -69,12 +66,12 @@ struct Camera {
 Ray generate_ray(Camera camera, vec2 p) {
     const float fov_radians = radians(camera.fov);
     const float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
-    vec3 wi_local = vec3(
+    const vec3 wi_local = vec3(
         p.x * tan(0.5f * fov_radians) * aspect_ratio,
         p.y * tan(0.5f * fov_radians),
         -1.0f
     );
-    vec3 wi_world = normalize(
+    const vec3 wi_world = normalize(
         wi_local.x * camera.right
         + wi_local.y * camera.up
         - wi_local.z * camera.front
@@ -165,8 +162,8 @@ float lcg(inout uint state) {
 }
 
 vec3 cosine_sample_hemisphere(vec2 u) {
-    float r = sqrt(u.x);
-    float phi = 2.0f * pi * u.y;
+    const float r = sqrt(u.x);
+    const float phi = 2.0f * pi * u.y;
     return vec3(r * cos(phi), r * sin(phi), sqrt(1.0f - u.x));
 }
 
@@ -185,7 +182,7 @@ SurfaceHitRecord hit_surface(Ray ray, uint index) {
     record.bary = vec2(-1.0f);
     record.time = ray.t_max;
 
-    Triangle triangle = indices[index];
+    const Triangle triangle = indices[index];
     const vec3 A = vertices[triangle.t0].position;
     const vec3 B = vertices[triangle.t1].position;
     const vec3 C = vertices[triangle.t2].position;
@@ -221,7 +218,7 @@ SurfaceHitRecord hit_scene(Ray ray) {
     hit_record.bary = vec2(-1.0f);
     hit_record.time = ray.t_max;
     for (uint i = 0u; i < indices.length(); ++i) {
-        SurfaceHitRecord current_hit_record = hit_surface(ray, i);
+        const SurfaceHitRecord current_hit_record = hit_surface(ray, i);
         if (
             (current_hit_record.prim != ~0u)
             && (hit_record.prim == ~0u || current_hit_record.time < hit_record.time)
@@ -234,7 +231,7 @@ SurfaceHitRecord hit_scene(Ray ray) {
 }
 
 bool intersect_any(Ray ray) {
-    SurfaceHitRecord hit_record = hit_scene(ray);
+    const SurfaceHitRecord hit_record = hit_scene(ray);
     if (
         (hit_record.prim == ~0u)
         || (hit_record.prim >= uint(indices.length() - 2u))
