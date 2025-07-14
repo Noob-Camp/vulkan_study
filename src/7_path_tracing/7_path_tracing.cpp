@@ -215,7 +215,7 @@ public:
     PathTracing()
         : width { 1920u }
         , height { 1080u }
-        , window_name { "7_sdf"s }
+        , window_name { "7_path_tracing"s }
     {
         ubo.sample_index = 0u;
     };
