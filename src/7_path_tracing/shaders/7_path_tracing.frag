@@ -1,35 +1,35 @@
-// #version 450
-
-// layout(location = 0) in vec3 in_color;
-
-// layout(location = 0) out vec4 frag_color;
-
-
-// void main() {
-//     vec2 coord = gl_PointCoord - vec2(0.5f, 0.5f);
-//     frag_color = vec4(in_color, 0.5f - length(coord));
-// }
-
-
-
-
 #version 450
 
-layout(location = 0) in vec2 inUV;
-layout(set = 0, binding = 0, std430) readonly buffer ImageOutputSSBO {
-    vec4 pixel_colors[]; // The array of pixel colors
-} output_pixel_buffer;
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 pixel_color;
+layout(set = 0, binding = 0, std430) readonly buffer PixelColors { vec4 pixel_colors[]; };
 
-const vec2 screen_size = vec2(800.0, 600.0);
+const uvec2 screen_size = uvec2(1920u, 1080u);
+const float hdr2ldr_scale = 2.0f;
 
-layout(location = 0) out vec4 outColor; // Output color to the framebuffer
+vec3 linear_to_srgb(vec3 x) {
+    vec3 srgb_result = mix(
+        1.055f * pow(x, vec3(1.0f / 2.4f)) - 0.055f,
+        12.92f * x,
+        lessThanEqual(x, vec3(0.00031308f))
+    );
+
+    return clamp(srgb_result, 0.0f, 1.0f);
+}
+
 
 void main() {
-    ivec2 pixel_coords = ivec2(inUV.x * screen_size.x, inUV.y * screen_size.y);
-    uint output_index = uint(pixel_coords.y) * uint(screen_size.x) + uint(pixel_coords.x);
-    if (output_index < screen_size.x * screen_size.y) {
-        outColor = output_pixel_buffer.pixel_colors[output_index];
-    } else {
-        outColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta for error visibility
-    }
+    const uint coord_x = uint(uv.x * screen_size.x);
+    const uint coord_y = uint(uv.y * screen_size.y);
+    const uint index = coord_x + coord_y * screen_size.x;
+    pixel_color = vec4(
+        linear_to_srgb(
+            clamp(
+                pixel_colors[index].xyz / pixel_colors[index].w * hdr2ldr_scale,
+                0.0f,
+                1.0f
+            )
+        ),
+        1.0f
+    );
 }

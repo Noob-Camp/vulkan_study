@@ -12,8 +12,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
-// #define STB_IMAGE_IMPLEMENTATION
-// #include <stb_image.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -49,10 +47,8 @@ const std::vector<const char*> VALIDATION_LAYERS = { "VK_LAYER_KHRONOS_validatio
 // const std::vector<const char*> INSTANCE_EXTENSIONS = { vk::EXTDebugUtilsExtensionName }; // TODO
 const std::vector<const char*> DEVICE_EXTENSIONS = { vk::KHRSwapchainExtensionName };
 
-const std::string MODEL_PATH = "./resource/viking_room.obj";
-const std::string TEXTURE_PATH = "./resource/viking_room.png";
 constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT { 2u };
-constexpr std::uint32_t PARTICLE_COUNT { 8192 };
+constexpr std::uint32_t PARTICLE_COUNT { 1 };
 
 
 VKAPI_ATTR vk::Bool32 VKAPI_CALL
@@ -64,11 +60,11 @@ debug_callback(
 ) {
     switch (messageSeverity) {
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose: {
-            minilog::log_trace("Vulkan Validation Layer [verbose]: {}", pCallbackData->pMessage);
+            // minilog::log_trace("Vulkan Validation Layer [verbose]: {}", pCallbackData->pMessage);
             return vk::False;
         }
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo: {
-            minilog::log_trace("Vulkan Validation Layer [info]: {}", pCallbackData->pMessage);
+            // minilog::log_trace("Vulkan Validation Layer [info]: {}", pCallbackData->pMessage);
             return vk::False;
         }
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning: {
@@ -100,13 +96,8 @@ std::vector<char> read_shader_file(const std::string& fileName) {
 }
 
 
-struct PushConstantData {
-    glm::uvec2 screen_size { 0u, 0u };
-    std::uint32_t hittableCount { 0u };
-    std::uint32_t sample_start { 0u };
-    std::uint32_t samples { 0u };
-    std::uint32_t total_samples { 0u };
-    std::uint32_t max_depth { 0u };
+struct UniformBufferObject {
+    std::uint32_t sample_index { 0u };
 };
 
 
@@ -133,50 +124,10 @@ template<> struct hash<Vertex> {
 } // namespace std end
 
 
-struct Particle {
-    glm::vec2 position;
-    glm::vec2 velocity;
-    glm::vec4 color;
-};
-
-
-struct Camera {
-    float fov;
-    glm::uvec2 resolution;
-    glm::vec3 position;
-    glm::vec3 front;
-    glm::vec3 up;
-    glm::vec3 right;
-};
-
-
 struct Triangle {
-    std::uint32_t index0;
-    std::uint32_t index1;
-    std::uint32_t index2;
-};
-
-
-struct CornellBoxSceneData {
-    Camera camera;
-    std::vector<glm::vec4> output_image;
-    std::vector<glm::vec4> seed_image;
-    // std::vector<glm::vec3> vertices;
-    // std::vector<Triangle> triangles;
-    std::vector<Vertex> vertices;
-    std::vector<std::uint32_t> indices;
-};
-
-struct CornellBoxSceneBuffer {
-    vk::Buffer vertex_buffer;
-    vk::DeviceMemory vertex_device_memory;
-    vk::Buffer index_buffer;
-    vk::DeviceMemory index_device_memory;
-};
-
-
-struct UniformBufferObject {
-    float delta_time { 1.0f };
+    std::uint32_t t0;
+    std::uint32_t t1;
+    std::uint32_t t2;
 };
 
 
@@ -200,11 +151,6 @@ struct SwapChainSupportDetail {
 
 class PathTracing {
 private:
-    PushConstantData constant_data;
-    CornellBoxSceneData scene_data;
-    CornellBoxSceneBuffer scene_buffers;
-    std::vector<Particle> particles;
-
     std::uint32_t width;
     std::uint32_t height;
     std::string window_name;
@@ -232,22 +178,27 @@ private:
     std::vector<vk::ImageView> swapchain_imageviews;
     std::vector<vk::Framebuffer> frame_buffers;
 
+    UniformBufferObject ubo;
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_device_memorys;
     std::vector<void*> uniform_buffers_mapped;
+    std::vector<Vertex> vertices;
+    std::vector<Triangle> indices;
     std::vector<vk::Buffer> storage_buffers;
     std::vector<vk::DeviceMemory> storage_device_memorys;
-
-    vk::RenderPass render_pass;
-    vk::PipelineLayout render_pipeline_layout;
-    vk::Pipeline render_pipeline;
 
     vk::DescriptorSetLayout compute_descriptor_set_layout;
     vk::PipelineLayout compute_pipeline_layout;
     vk::Pipeline compute_pipeline;
 
+    vk::RenderPass render_pass;
+    vk::DescriptorSetLayout render_descriptor_set_layout;
+    vk::PipelineLayout render_pipeline_layout;
+    vk::Pipeline render_pipeline;
+
     vk::DescriptorPool descriptor_pool;
     std::vector<vk::DescriptorSet> compute_descriptor_sets;
+    std::vector<vk::DescriptorSet> render_descriptor_sets;
 
     std::vector<vk::Semaphore> image_available_semaphores;
     std::vector<vk::Semaphore> render_finished_semaphores;
@@ -262,37 +213,23 @@ private:
 
 public:
     PathTracing()
-        : width { 800 }
-        , height { 600 }
-        , window_name { "7_path_tracing"s }
+        : width { 1920u }
+        , height { 1080u }
+        , window_name { "7_sdf"s }
     {
-        // Initialize particles
-        particles.resize(PARTICLE_COUNT);
-
-        std::default_random_engine rnd_engine((unsigned)time(nullptr));
-        std::uniform_real_distribution<float> rnd_dist(0.0f, 1.0f);
-        std::vector<Particle> particles(PARTICLE_COUNT);
-        for (auto& particle : particles) {
-            float r = 0.25f * std::sqrt(rnd_dist(rnd_engine));
-            float theta = rnd_dist(rnd_engine) * 2.0f * 3.1415926;
-            float x = r * std::cos(theta) * static_cast<float>(height) / static_cast<float>(width);
-            float y = r * std::sin(theta);
-            particle.position = glm::vec2(x, y);
-            particle.velocity = glm::normalize(glm::vec2(x, y)) * 0.00025f;
-            particle.color = glm::vec4(rnd_dist(rnd_engine), rnd_dist(rnd_engine), rnd_dist(rnd_engine), 1.0f);
-        }
+        ubo.sample_index = 0u;
     };
 
     PathTracing(
         std::uint32_t _width,
         std::uint32_t _height,
-        const std::string& window_name
+        const std::string& _window_name
     )
-        : PathTracing()
+        : width { _width }
+        , height { _height }
+        , window_name { _window_name }
     {
-        width = _width;
-        height = _height;
-        window_name = _window_name;
+        ubo.sample_index = 0u;
     }
 
     ~PathTracing() {
@@ -311,6 +248,8 @@ public:
         logical_device.destroy(compute_pipeline);
         logical_device.destroy(compute_pipeline_layout);
         logical_device.destroy(compute_descriptor_set_layout);
+        logical_device.destroy(render_descriptor_set_layout);
+
         for (std::size_t i { 0uz }; i < uniform_buffers.size(); ++i) {
             logical_device.destroy(uniform_buffers[i]);
             logical_device.freeMemory(uniform_device_memorys[i]);
@@ -321,7 +260,7 @@ public:
         }
         logical_device.destroy(command_pool);
 
-        logical_device.waitIdle();
+        // logical_device.waitIdle();
         logical_device.destroy();
 
         if (ENABLE_VALIDATION_LAYER) {
@@ -376,26 +315,28 @@ private:
         create_logical_device();
 
         create_command_pool();
-        // allocate_render_command_buffers();
+        allocate_render_command_buffers();
         allocate_compute_command_buffers();
 
-        // create_swapchain();
-        // create_swapchain_imageviews();
+        create_swapchain();
+        create_swapchain_imageviews();
 
-        load_obj_model();
         create_uniform_buffers();
+        load_obj_model();
         create_storage_buffers();
-        create_output_image();
 
-        // create_render_pass();
-        // create_graphic_pipeline();
         create_compute_descriptor_set_layout();
         create_compute_pipeline();
 
-        // create_frame_buffers();
+        create_render_pass();
+        create_render_descriptor_set_layout();
+        create_graphic_pipeline();
+
+        create_frame_buffers();
 
         create_descriptor_pool();
         create_compute_descriptor_sets();
+        create_render_descriptor_sets();
 
         create_sync_objects();
     }
@@ -404,6 +345,54 @@ private:
         while (!glfwWindowShouldClose(glfw_window)) {
             glfwPollEvents();
             draw_frame();
+
+            // F11: reset sample_index
+            if (glfwGetKey(glfw_window, GLFW_KEY_F11) != GLFW_RELEASE) {
+                ubo.sample_index = 0u;
+                minilog::log_debug("the ubo.sample_index is reset to 0u");
+            }
+
+            // F12: screenshot
+            if (glfwGetKey(glfw_window, GLFW_KEY_F12) != GLFW_RELEASE) {
+                std::vector<float> output_data(width * height * 4uz, 0.0f);
+
+                vk::DeviceSize device_size = width * height * 4u * 4u;
+                vk::Buffer staging_buffer;
+                vk::DeviceMemory staging_device_memory;
+                create_buffer(
+                    device_size,
+                    vk::BufferUsageFlagBits::eTransferDst,
+                    vk::MemoryPropertyFlagBits::eHostVisible
+                    | vk::MemoryPropertyFlagBits::eHostCoherent,
+                    staging_buffer,
+                    staging_device_memory
+                );
+
+                copy_buffer(storage_buffers[2uz], staging_buffer, device_size);
+
+                void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size, {});
+                memcpy(output_data.data(), data, static_cast<std::size_t>(device_size));
+                logical_device.unmapMemory(staging_device_memory);
+
+                logical_device.destroy(staging_buffer);
+                logical_device.freeMemory(staging_device_memory);
+
+                std::vector<unsigned char> image_data_uchar(width * height * 4u);
+                for (size_t i = 0; i < output_data.size(); ++i) {
+                    float value = output_data[i];
+                    value = std::fmax(0.0f, std::fmin(1.0f, value)); // clamp [0.0, 1.0]
+                    image_data_uchar[i] = static_cast<unsigned char>(std::round(value * 255.0f)); // [0, 255]
+                }
+
+                const char* file_name = "output_image.png";
+                int stride_in_bytes = width * 4; // bytes/row
+                if (
+                    int result = stbi_write_png(file_name, width, height, 4, image_data_uchar.data(), stride_in_bytes);
+                    result == 1
+                ) {
+                    minilog::log_debug("write {} successful!", file_name);
+                }
+            }
 
             // We want to animate the particle system using the last frames time to get smooth,
             //   frame-rate independent animation
@@ -684,40 +673,6 @@ private:
         }
     }
 
-    void load_obj_model() {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn { ""s };
-        std::string err { ""s };
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
-            minilog::log_fatal("{}", warn + err);
-        }
-
-        std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
-        for (const auto& shape : shapes) {
-            for (const auto& index : shape.mesh.indices) {
-                Vertex vertex {
-                    .position = {
-                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 0)],
-                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
-                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
-                    },
-                    .color = { 1.0f, 1.0f, 1.0f },
-                    .uv = {
-                        attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
-                        1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
-                    }
-                };
-                if (unique_vertices.count(vertex) == 0) {
-                    unique_vertices[vertex] = static_cast<std::uint32_t>(scene_data.vertices.size());
-                    scene_data.vertices.push_back(vertex);
-                }
-                scene_data.indices.push_back(unique_vertices[vertex]);
-            }
-        }
-    }
-
     void create_uniform_buffers() {
         uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         uniform_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
@@ -736,47 +691,125 @@ private:
         }
     }
 
+    void load_obj_model() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn { ""s };
+        std::string err { ""s };
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "./resource/cornell_box.obj", "./resource/cornell_box.mtl")) {
+            minilog::log_fatal("{}", warn + err);
+        }
+
+        std::vector<std::uint32_t> flat_indices;
+        std::unordered_map<Vertex, std::uint32_t> unique_vertices {};
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex {
+                    .position = {
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 0)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 1)],
+                        attrib.vertices[static_cast<std::size_t>(3 * index.vertex_index + 2)]
+                    },
+                    .color = { 1.0f, 1.0f, 1.0f },
+                    .uv = {
+                        // attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index)],
+                        // 1.0f - attrib.texcoords[static_cast<std::size_t>(2 * index.texcoord_index + 1)]
+                        0.0f, 0.0f // TODO: use texture
+                    }
+                };
+                if (unique_vertices.count(vertex) == 0) {
+                    unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                flat_indices.push_back(unique_vertices[vertex]);
+            }
+        }
+
+        indices.resize(flat_indices.size() / 3uz);
+        for (std::size_t i { 0uz }; i < indices.size(); ++i) {
+            indices[i] = Triangle {
+                flat_indices[3uz * i + 0uz],
+                flat_indices[3uz * i + 1uz],
+                flat_indices[3uz * i + 2uz]
+            };
+        }
+    }
+
     void create_storage_buffers() {
-        vk::DeviceSize device_size = sizeof(Particle) * PARTICLE_COUNT;
+        // storage_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        // storage_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
+        storage_buffers.resize(4uz);
+        storage_device_memorys.resize(4uz);
+
+        create_vertex_buffer();
+        create_index_buffer();
+        create_output_buffer();
+        create_seed_buffer();
+    }
+
+    void create_vertex_buffer() {
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
+        vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
         create_buffer(
-            device_size,
+            vertex_device_size,
             vk::BufferUsageFlagBits::eTransferSrc,
             vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent,
             staging_buffer,
             staging_device_memory
         );
-        void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
-        memcpy(data, particles.data(), static_cast<std::size_t>(device_size));
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, vertex_device_size, {});
+        memcpy(data, vertices.data(), static_cast<std::size_t>(vertex_device_size));
         logical_device.unmapMemory(staging_device_memory);
 
-        // storage_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        // storage_device_memorys.resize(MAX_FRAMES_IN_FLIGHT);
-        storage_buffers.resize(3);
-        storage_device_memorys.resize(3);
-
-        // Copy initial particle data to all storage buffers
-        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            create_buffer(
-                device_size,
-                vk::BufferUsageFlagBits::eTransferDst
-                | vk::BufferUsageFlagBits::eVertexBuffer
-                | vk::BufferUsageFlagBits::eStorageBuffer,
-                vk::MemoryPropertyFlagBits::eDeviceLocal,
-                storage_buffers[i],
-                storage_device_memorys[i]
-            );
-            copy_buffer(staging_buffer, storage_buffers[i], device_size);
-        }
+        create_buffer(
+            vertex_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eStorageBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            storage_buffers[0uz],
+            storage_device_memorys[0uz]
+        );
+        copy_buffer(staging_buffer, storage_buffers[0uz], vertex_device_size);
 
         logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);
     }
 
-    void create_output_image() {
-        vk::DeviceSize device_size = 800u * 600u * 4u * 4u;
+    void create_index_buffer() {
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, index_device_size, {});
+        memcpy(data, indices.data(), static_cast<std::size_t>(index_device_size));
+        logical_device.unmapMemory(staging_device_memory);
+
+        create_buffer(
+            index_device_size,
+            vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eStorageBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            storage_buffers[1uz],
+            storage_device_memorys[1uz]
+        );
+        copy_buffer(staging_buffer, storage_buffers[1uz], index_device_size);
+
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
+    }
+
+    void create_output_buffer() {
+        vk::DeviceSize device_size = width * height * 4u * 4u;
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
         create_buffer(
@@ -788,14 +821,43 @@ private:
             staging_device_memory
         );
 
-        std::vector<float> test(800u * 600u * 4u * 4u);
+        std::vector<float> test(width * height * 4u, 0.0f);
         void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
         memcpy(data, test.data(), static_cast<std::size_t>(device_size));
-        // memset(data, 0, static_cast<std::size_t>(device_size));
         logical_device.unmapMemory(staging_device_memory);
 
-        // storage_buffers.resize(3);
-        // storage_device_memorys.resize(3);
+        create_buffer(
+            device_size,
+            vk::BufferUsageFlagBits::eTransferSrc
+            | vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eStorageBuffer,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            storage_buffers[2uz],
+            storage_device_memorys[2uz]
+        );
+        copy_buffer(staging_buffer, storage_buffers[2uz], device_size);
+
+        logical_device.destroy(staging_buffer);
+        logical_device.freeMemory(staging_device_memory);
+    }
+
+    void create_seed_buffer() {
+        vk::DeviceSize device_size = width * height * 4u;
+        vk::Buffer staging_buffer;
+        vk::DeviceMemory staging_device_memory;
+        create_buffer(
+            device_size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent,
+            staging_buffer,
+            staging_device_memory
+        );
+
+        std::vector<std::uint32_t> test(width * height, 0u);
+        void* data = logical_device.mapMemory(staging_device_memory, 0u, device_size);
+        memcpy(data, test.data(), static_cast<std::size_t>(device_size));
+        logical_device.unmapMemory(staging_device_memory);
 
         create_buffer(
             device_size,
@@ -804,13 +866,119 @@ private:
             vk::MemoryPropertyFlagBits::eDeviceLocal
             | vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent,
-            storage_buffers[2uz],
-            storage_device_memorys[2uz]
+            storage_buffers[3uz],
+            storage_device_memorys[3uz]
         );
-        copy_buffer(staging_buffer, storage_buffers[2uz], device_size);
+        copy_buffer(staging_buffer, storage_buffers[3uz], device_size);
 
         logical_device.destroy(staging_buffer);
         logical_device.freeMemory(staging_device_memory);
+    }
+
+    void create_compute_descriptor_set_layout() {
+        std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings = {
+            vk::DescriptorSetLayoutBinding { // ubo
+                .binding = 0u,
+                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // vertex buffer
+                .binding = 1u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // index buffer
+                .binding = 2u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // pixel colors
+                .binding = 3u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute
+                    | vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            },
+            vk::DescriptorSetLayoutBinding { // seed buffer
+                .binding = 4u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+                .pImmutableSamplers = nullptr
+            }
+        };
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+            .pBindings = descriptor_set_layout_bindings.data()
+        };
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &compute_descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
+        }
+    }
+
+    void create_compute_pipeline() {
+        std::vector<char> comp_code = read_shader_file("./src/7_path_tracing/shaders/7_path_tracing_comp.spv");
+        vk::ShaderModule comp_shader_module = create_shader_module(comp_code);
+        vk::PipelineShaderStageCreateInfo comp_pipeline_shader_stage_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .stage = vk::ShaderStageFlagBits::eCompute,
+            .module = comp_shader_module,
+            .pName = "main",
+            .pSpecializationInfo = nullptr
+        };
+
+        std::vector<vk::DescriptorSetLayout>
+        descriptor_set_layouts = { compute_descriptor_set_layout };
+        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data(),
+            .pushConstantRangeCount = 0u,
+            .pPushConstantRanges = nullptr
+        };
+        if (
+            vk::Result result = logical_device.createPipelineLayout(
+                &pipeline_layout_ci, nullptr, &compute_pipeline_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::PipelineLayout!");
+        }
+
+        vk::ComputePipelineCreateInfo compute_pipeline_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .stage = comp_pipeline_shader_stage_ci,
+            .layout = compute_pipeline_layout,
+            .basePipelineHandle = nullptr,
+            .basePipelineIndex = 0
+        };
+        if (
+            vk::Result result = logical_device.createComputePipelines(
+                nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create compute pipeline!");
+        }
+
+        logical_device.destroyShaderModule(comp_shader_module, nullptr);
     }
 
     void create_render_pass() {
@@ -872,6 +1040,32 @@ private:
         }
     }
 
+    void create_render_descriptor_set_layout() {
+        std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings = {
+            vk::DescriptorSetLayoutBinding { // pixel colors
+                .binding = 0u,
+                .descriptorType = vk::DescriptorType::eStorageBuffer,
+                .descriptorCount = 1u,
+                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+                .pImmutableSamplers = nullptr
+            }
+        };
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
+            .pNext = nullptr,
+            .flags = {},
+            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
+            .pBindings = descriptor_set_layout_bindings.data()
+        };
+        if (
+            vk::Result result = logical_device.createDescriptorSetLayout(
+                &descriptor_set_layout_ci, nullptr, &render_descriptor_set_layout
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
+        }
+    }
+
     void create_graphic_pipeline() {
         // Create graphic pipeline layout
         std::vector<char> vert_code = read_shader_file("./src/7_path_tracing/shaders/7_path_tracing_vert.spv");
@@ -899,38 +1093,19 @@ private:
             frag_pipeline_shader_stage_ci
         };
 
-        vk::VertexInputBindingDescription vertex_input_binding_desc {
-            .binding = 0u,
-            .stride = sizeof(Particle),
-            .inputRate = vk::VertexInputRate::eVertex
-        };
-        std::array<vk::VertexInputAttributeDescription, 2uz> vertex_input_attribute_descs = {
-            vk::VertexInputAttributeDescription {
-                .location = 0u,
-                .binding = 0u,
-                .format = vk::Format::eR32G32Sfloat,
-                .offset = offsetof(Particle, position)
-            },
-            vk::VertexInputAttributeDescription {
-                .location = 1u,
-                .binding = 0u,
-                .format = vk::Format::eR32G32B32A32Sfloat,
-                .offset = offsetof(Particle, color)
-            }
-        };
         vk::PipelineVertexInputStateCreateInfo vertex_input_state_ci {
             .pNext = nullptr,
             .flags = {},
-            .vertexBindingDescriptionCount = 1u,
-            .pVertexBindingDescriptions = &vertex_input_binding_desc,
-            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(vertex_input_attribute_descs.size()),
-            .pVertexAttributeDescriptions = vertex_input_attribute_descs.data()
+            .vertexBindingDescriptionCount = 0u,
+            .pVertexBindingDescriptions = nullptr,
+            .vertexAttributeDescriptionCount = 0u,
+            .pVertexAttributeDescriptions = nullptr
         };
 
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state_ci {
             .pNext = nullptr,
             .flags = {},
-            .topology = vk::PrimitiveTopology::ePointList,
+            .topology = vk::PrimitiveTopology::eTriangleList,
             .primitiveRestartEnable = vk::False
         };
 
@@ -967,7 +1142,7 @@ private:
             .depthClampEnable = vk::False,
             .rasterizerDiscardEnable = vk::False,
             .polygonMode = vk::PolygonMode::eFill,
-            .cullMode = vk::CullModeFlagBits::eBack,
+            .cullMode = vk::CullModeFlagBits::eFront,
             .frontFace = vk::FrontFace::eCounterClockwise,
             .depthBiasEnable = vk::False,
             .depthBiasClamp = 0.0f,
@@ -985,20 +1160,6 @@ private:
             .alphaToCoverageEnable = vk::False,
             .alphaToOneEnable = vk::False
         };
-
-        // vk::PipelineDepthStencilStateCreateInfo depth_stencil_state_ci {
-        //     .pNext = nullptr,
-        //     .flags = {},
-        //     .depthTestEnable = vk::True,
-        //     .depthWriteEnable = vk::True,
-        //     .depthCompareOp = vk::CompareOp::eLess,
-        //     .depthBoundsTestEnable = vk::False,
-        //     .stencilTestEnable = vk::False,
-        //     .front = {},
-        //     .back = {},
-        //     .minDepthBounds = 0.0f,
-        //     .maxDepthBounds = 1.0f
-        // };
 
         vk::PipelineColorBlendAttachmentState color_blend_attachment_state {
             .blendEnable = vk::True,
@@ -1035,11 +1196,13 @@ private:
             .pDynamicStates = dynamic_states.data()
         };
 
+        std::vector<vk::DescriptorSetLayout>
+        descriptor_set_layouts = { render_descriptor_set_layout };
         vk::PipelineLayoutCreateInfo pipeline_layout_ci {
             .pNext = nullptr,
             .flags = {},
-            .setLayoutCount = 0u,
-            .pSetLayouts = nullptr,
+            .setLayoutCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data(),
             .pushConstantRangeCount = 0u,
             .pPushConstantRanges = nullptr
         };
@@ -1084,109 +1247,6 @@ private:
         logical_device.destroyShaderModule(frag_shader_module, nullptr);
     }
 
-    void create_compute_descriptor_set_layout() {
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding {
-            .binding = 0u,
-            .descriptorType = vk::DescriptorType::eUniformBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding2 {
-            .binding = 1u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding3 {
-            .binding = 2u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_binding4 {
-            .binding = 3u,
-            .descriptorType = vk::DescriptorType::eStorageBuffer,
-            .descriptorCount = 1u,
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .pImmutableSamplers = nullptr
-        };
-
-        std::array<vk::DescriptorSetLayoutBinding, 4uz> descriptor_set_layout_bindings = {
-            descriptor_set_layout_binding,
-            descriptor_set_layout_binding2,
-            descriptor_set_layout_binding3,
-            descriptor_set_layout_binding4
-        };
-
-        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .bindingCount = static_cast<std::uint32_t>(descriptor_set_layout_bindings.size()),
-            .pBindings = descriptor_set_layout_bindings.data()
-        };
-        if (
-            vk::Result result = logical_device.createDescriptorSetLayout(
-                &descriptor_set_layout_ci, nullptr, &compute_descriptor_set_layout
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::DescriptorSetLayout!");
-        }
-    }
-
-    void create_compute_pipeline() {
-        std::vector<char> comp_code = read_shader_file("./src/7_path_tracing/shaders/7_path_tracing_comp.spv");
-        vk::ShaderModule comp_shader_module = create_shader_module(comp_code);
-        vk::PipelineShaderStageCreateInfo comp_pipeline_shader_stage_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .stage = vk::ShaderStageFlagBits::eCompute,
-            .module = comp_shader_module,
-            .pName = "main",
-            .pSpecializationInfo = nullptr
-        };
-
-        vk::PipelineLayoutCreateInfo pipeline_layout_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .setLayoutCount = 1u,
-            .pSetLayouts = &compute_descriptor_set_layout,
-            .pushConstantRangeCount = 0u,
-            .pPushConstantRanges = nullptr
-        };
-        if (
-            vk::Result result = logical_device.createPipelineLayout(
-                &pipeline_layout_ci, nullptr, &compute_pipeline_layout
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create vk::PipelineLayout!");
-        }
-
-        vk::ComputePipelineCreateInfo compute_pipeline_ci {
-            .pNext = nullptr,
-            .flags = {},
-            .stage = comp_pipeline_shader_stage_ci,
-            .layout = compute_pipeline_layout,
-            .basePipelineHandle = nullptr,
-            .basePipelineIndex = 0
-        };
-        if (
-            vk::Result result = logical_device.createComputePipelines(
-                nullptr, 1u, &compute_pipeline_ci, nullptr, &compute_pipeline
-            );
-            result != vk::Result::eSuccess
-        ) {
-            minilog::log_fatal("Failed to create compute pipeline!");
-        }
-    }
-
     void create_frame_buffers() {
         frame_buffers.resize(swapchain_imageviews.size());
         for (std::size_t i { 0uz }; i < swapchain_imageviews.size(); ++i) {
@@ -1218,13 +1278,13 @@ private:
             },
             vk::DescriptorPoolSize {
                 .type = vk::DescriptorType::eStorageBuffer,
-                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT + 1u) * 2u
+                .descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 4u
             }
         };
         vk::DescriptorPoolCreateInfo descriptor_pool_ci {
             .pNext = nullptr,
             .flags = {},
-            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT),
+            .maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2u,
             .poolSizeCount = static_cast<std::uint32_t>(descriptor_pool_size.size()),
             .pPoolSizes = descriptor_pool_size.data()
         };
@@ -1256,27 +1316,32 @@ private:
         }
 
         for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vk::DescriptorBufferInfo descriptor_buffer_info {
+            vk::DescriptorBufferInfo descriptor_buffer_info { // ubo
                 .buffer = uniform_buffers[i],
-                .offset = 0u,
-                .range = sizeof(UniformBufferObject)
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(UniformBufferObject) }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info2 {
-                .buffer = storage_buffers[(i - 1uz) % MAX_FRAMES_IN_FLIGHT],
-                .offset = 0u,
-                .range = sizeof(Particle) * PARTICLE_COUNT
+            vk::DescriptorBufferInfo descriptor_buffer_info2 { // vertex buffer
+                .buffer = storage_buffers[0uz],
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(vertices[0uz]) * vertices.size() }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info3 {
-                .buffer = storage_buffers[i],
-                .offset = 0u,
-                .range = sizeof(Particle) * PARTICLE_COUNT
+            vk::DescriptorBufferInfo descriptor_buffer_info3 { // index buffer
+                .buffer = storage_buffers[1uz],
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { sizeof(indices[0uz]) * indices.size() }
             };
-            vk::DescriptorBufferInfo descriptor_buffer_info4 {
+            vk::DescriptorBufferInfo descriptor_buffer_info4 { // pixel colors
                 .buffer = storage_buffers[2uz],
-                .offset = 0u,
-                .range = 800u * 600u * 4u * 4u
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u * 4u }
             };
-            std::array<vk::WriteDescriptorSet, 4uz> write_descriptor_sets = {
+            vk::DescriptorBufferInfo descriptor_buffer_info5 { // seed buffer
+                .buffer = storage_buffers[3uz],
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u }
+            };
+            std::vector<vk::WriteDescriptorSet> write_descriptor_sets = {
                 vk::WriteDescriptorSet {
                     .pNext = nullptr,
                     .dstSet = compute_descriptor_sets[i],
@@ -1319,6 +1384,64 @@ private:
                     .descriptorType = vk::DescriptorType::eStorageBuffer,
                     .pImageInfo = nullptr,
                     .pBufferInfo = &descriptor_buffer_info4,
+                    .pTexelBufferView = nullptr
+                },
+                vk::WriteDescriptorSet {
+                    .pNext = nullptr,
+                    .dstSet = compute_descriptor_sets[i],
+                    .dstBinding = 4u,
+                    .dstArrayElement = 0u,
+                    .descriptorCount = 1u,
+                    .descriptorType = vk::DescriptorType::eStorageBuffer,
+                    .pImageInfo = nullptr,
+                    .pBufferInfo = &descriptor_buffer_info5,
+                    .pTexelBufferView = nullptr
+                }
+            };
+            logical_device.updateDescriptorSets(
+                static_cast<std::uint32_t>(write_descriptor_sets.size()),
+                write_descriptor_sets.data(),
+                0u,
+                nullptr
+            );
+        }
+    }
+
+    void create_render_descriptor_sets() {
+        render_descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+        std::vector<vk::DescriptorSetLayout> descriptor_set_layouts(
+            MAX_FRAMES_IN_FLIGHT,
+            render_descriptor_set_layout
+        );
+        vk::DescriptorSetAllocateInfo descriptor_set_ai {
+            .pNext = nullptr,
+            .descriptorPool = descriptor_pool,
+            .descriptorSetCount = static_cast<std::uint32_t>(descriptor_set_layouts.size()),
+            .pSetLayouts = descriptor_set_layouts.data()
+        };
+        if (
+            vk::Result result = logical_device.allocateDescriptorSets(&descriptor_set_ai, render_descriptor_sets.data());
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("Failed to create vk::DescriptorSet!");
+        }
+
+        for (std::size_t i { 0uz }; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            vk::DescriptorBufferInfo descriptor_buffer_info { // pixel colors
+                .buffer = storage_buffers[2uz],
+                .offset = vk::DeviceSize { 0u },
+                .range = vk::DeviceSize { width * height * 4u * 4u }
+            };
+            std::vector<vk::WriteDescriptorSet> write_descriptor_sets = {
+                vk::WriteDescriptorSet {
+                    .pNext = nullptr,
+                    .dstSet = render_descriptor_sets[i],
+                    .dstBinding = 0u,
+                    .dstArrayElement = 0u,
+                    .descriptorCount = 1u,
+                    .descriptorType = vk::DescriptorType::eStorageBuffer,
+                    .pImageInfo = nullptr,
+                    .pBufferInfo = &descriptor_buffer_info,
                     .pTexelBufferView = nullptr
                 }
             };
@@ -1404,114 +1527,90 @@ private:
             minilog::log_fatal("compute: failed to submit compute command buffer!");
         }
 
-        compute_queue.waitIdle(); // wait the calculation to finish
-
-        std::vector<float> output_data;
-        output_data.resize(800u * 600u * 4u);
-        void* data = logical_device.mapMemory(storage_device_memorys[2uz], 0u, 800u * 600u * 4u * 4u, {});
-        memcpy(output_data.data(), data, 800u * 600u * 4u * 4u);
-        logical_device.unmapMemory(storage_device_memorys[2uz]);
-
-        std::vector<unsigned char> image_data_uchar(800u * 600u * 4u);
-        for (size_t i = 0; i < output_data.size(); ++i) {
-            // 确保浮点值在 0.0 到 1.0 之间，然后映射到 0 到 255
-            float value = output_data[i];
-            // 钳制值到 [0.0, 1.0] 范围，以防计算着色器输出超出此范围
-            value = std::fmax(0.0f, std::fmin(1.0f, value));
-            image_data_uchar[i] = static_cast<unsigned char>(std::round(value * 255.0f));
+        // Render submission
+        if (
+            vk::Result result = logical_device.waitForFences(
+                1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
+            );
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("render: wait for vk::Fence failed!");
         }
 
-        const char* filename = "output_image.png";
-        int stride_in_bytes = 800 * 4; // 每行有多少字节 (width * 4 字节/像素)
-        // 调用 stb_image_write 库函数
-        int result = stbi_write_png(filename, 800, 600, 4, image_data_uchar.data(), stride_in_bytes);
+        std::uint32_t image_index { 0u };
+        if (
+            vk::Result result = logical_device.acquireNextImageKHR(
+                swapchain,
+                std::numeric_limits<std::uint64_t>::max(),
+                image_available_semaphores[current_frame],
+                nullptr,
+                &image_index
+            );
+            result == vk::Result::eErrorOutOfDateKHR
+        ) {
+            recreate_swapchain();
+            return ;
+        } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
+            minilog::log_fatal("Failed to acquire swap chain image!");
+        }
 
+        if (
+            vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_debug("render: reset vk::Fence failed!");
+        }
 
+        render_command_buffers[current_frame].reset({});
+        record_render_command_buffer(render_command_buffers[current_frame], image_index);
 
-        // // Render submission
-        // if (
-        //     vk::Result result = logical_device.waitForFences(
-        //         1u, &render_in_flight_fences[current_frame], vk::True, std::numeric_limits<std::uint64_t>::max()
-        //     );
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_debug("render: wait for vk::Fence failed!");
-        // }
+        std::array<vk::Semaphore, 2uz> wait_semaphores = {
+            compute_finished_semaphores[current_frame],
+            image_available_semaphores[current_frame]
+        };
+        std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::PipelineStageFlagBits::eColorAttachmentOutput
+        };
+        submit_info = vk::SubmitInfo {};
+        submit_info.pNext = nullptr;
+        submit_info.waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size());
+        submit_info.pWaitSemaphores = wait_semaphores.data();
+        submit_info.pWaitDstStageMask = wait_stages.data();
+        submit_info.commandBufferCount = 1u;
+        submit_info.pCommandBuffers = &render_command_buffers[current_frame];
+        submit_info.signalSemaphoreCount = 1u;
+        submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
+        if (
+            vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
+            result != vk::Result::eSuccess
+        ) {
+            minilog::log_fatal("render: failed to submit render command buffer!");
+        }
 
-        // std::uint32_t image_index { 0u };
-        // if (
-        //     vk::Result result = logical_device.acquireNextImageKHR(
-        //         swapchain,
-        //         std::numeric_limits<std::uint64_t>::max(),
-        //         image_available_semaphores[current_frame],
-        //         nullptr,
-        //         &image_index
-        //     );
-        //     result == vk::Result::eErrorOutOfDateKHR
-        // ) {
-        //     recreate_swapchain();
-        //     return ;
-        // } else if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-        //     minilog::log_fatal("Failed to acquire swap chain image!");
-        // }
+        vk::SwapchainKHR swap_chains[] = { swapchain };
+        vk::PresentInfoKHR present_info {
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1u,
+            .pWaitSemaphores = &render_finished_semaphores[current_frame],
+            .swapchainCount = 1u,
+            .pSwapchains = swap_chains,
+            .pImageIndices = &image_index,
+            .pResults = nullptr
+        };
+        if (
+            vk::Result result = present_queue.presentKHR(&present_info);
+            result == vk::Result::eErrorOutOfDateKHR
+                || result == vk::Result::eSuboptimalKHR
+                || framebuffer_resized
+        ) {
+            framebuffer_resized = false;
+            recreate_swapchain();
+        } else if (result != vk::Result::eSuccess) {
+            minilog::log_fatal("Failed to present swap chain image!");
+        }
 
-        // if (
-        //     vk::Result result = logical_device.resetFences(1u, &render_in_flight_fences[current_frame]);
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_debug("render: reset vk::Fence failed!");
-        // }
-
-        // render_command_buffers[current_frame].reset({});
-        // record_render_command_buffer(render_command_buffers[current_frame], image_index);
-
-        // std::array<vk::Semaphore, 2uz> wait_semaphores = {
-        //     compute_finished_semaphores[current_frame],
-        //     image_available_semaphores[current_frame]
-        // };
-        // std::array<vk::PipelineStageFlags, 2uz> wait_stages = {
-        //     vk::PipelineStageFlagBits::eComputeShader,
-        //     vk::PipelineStageFlagBits::eColorAttachmentOutput
-        // };
-        // submit_info = vk::SubmitInfo {};
-        // submit_info.pNext = nullptr;
-        // submit_info.waitSemaphoreCount = static_cast<std::uint32_t>(wait_semaphores.size());
-        // submit_info.pWaitSemaphores = wait_semaphores.data();
-        // submit_info.pWaitDstStageMask = wait_stages.data();
-        // submit_info.commandBufferCount = 1u;
-        // submit_info.pCommandBuffers = &render_command_buffers[current_frame];
-        // submit_info.signalSemaphoreCount = 1u;
-        // submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
-        // if (
-        //     vk::Result result = graphic_queue.submit(1u, &submit_info, render_in_flight_fences[current_frame]);
-        //     result != vk::Result::eSuccess
-        // ) {
-        //     minilog::log_fatal("render: failed to submit render command buffer!");
-        // }
-
-        // vk::SwapchainKHR swap_chains[] = { swapchain };
-        // vk::PresentInfoKHR present_info {
-        //     .pNext = nullptr,
-        //     .waitSemaphoreCount = 1u,
-        //     .pWaitSemaphores = &render_finished_semaphores[current_frame],
-        //     .swapchainCount = 1u,
-        //     .pSwapchains = swap_chains,
-        //     .pImageIndices = &image_index,
-        //     .pResults = nullptr
-        // };
-        // if (
-        //     vk::Result result = present_queue.presentKHR(&present_info);
-        //     result == vk::Result::eErrorOutOfDateKHR
-        //         || result == vk::Result::eSuboptimalKHR
-        //         || framebuffer_resized
-        // ) {
-        //     framebuffer_resized = false;
-        //     recreate_swapchain();
-        // } else if (result != vk::Result::eSuccess) {
-        //     minilog::log_fatal("Failed to present swap chain image!");
-        // }
-
-        // current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
+        current_frame = (current_frame + 1u) % MAX_FRAMES_IN_FLIGHT;
     }
 
     void cleanup_swapchain() {
@@ -1570,12 +1669,17 @@ private:
             .maxDepth = 1.0f
         };
         vk::Rect2D scissor { .offset { .x = 0, .y = 0 }, .extent = swapchain_extent };
-        vk::DeviceSize offsets[] = { 0u };
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
         commandBuffer.setViewport(0u, 1u, &viewport);
         commandBuffer.setScissor(0u, 1u, &scissor);
-        commandBuffer.bindVertexBuffers(0u, 1u, &storage_buffers[current_frame], offsets);
-        commandBuffer.draw(PARTICLE_COUNT, 1u, 0u, 0u);
+        commandBuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            render_pipeline_layout,
+            0u,
+            1u, &render_descriptor_sets[current_frame],
+            0u, nullptr
+        );
+        commandBuffer.draw(3u, 1u, 0u, 0u);
         commandBuffer.endRenderPass(); // render pass end
         commandBuffer.end(); // command buffer end
     }
@@ -1620,7 +1724,7 @@ private:
     ) {
         for (const auto& surface_format : avaiableFormats) {
             if (
-                (surface_format.format == vk::Format::eB8G8R8A8Srgb)
+                (surface_format.format == vk::Format::eB8G8R8A8Unorm)
                 && (surface_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
             ) {
                 return surface_format;
@@ -1905,10 +2009,9 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
-        UniformBufferObject ubo {};
-        ubo.delta_time = last_frame_time * 2.0f;
-
+        minilog::log_debug("the sample index: {}", ubo.sample_index);
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
+        ubo.sample_index++;
     }
 
     void record_compute_command_buffer(vk::CommandBuffer commandBuffer) {
@@ -1929,12 +2032,10 @@ private:
             vk::PipelineBindPoint::eCompute,
             compute_pipeline_layout,
             0u,
-            1u,
-            &compute_descriptor_sets[current_frame],
-            0u,
-            nullptr
+            1u, &compute_descriptor_sets[current_frame],
+            0u, nullptr
         );
-        commandBuffer.dispatch(300u, 100u, 1u);
+        commandBuffer.dispatch(width / 8u, height / 8u, 1u);
         commandBuffer.end(); // command buffer end
     }
 

@@ -1,115 +1,353 @@
 #version 450
 
-// std140 (uniform) / std430 (SSBO)
-// Align memory with a size of 4 bytes
+
+struct Onb {
+    vec3 tangent;
+    vec3 binormal;
+    vec3 normal;
+};
+Onb make_onb(vec3 normal) {
+    const float sign = normal.z >= 0.0f ? 1.0f : -1.0f;
+    const float a = -1.0f / (sign + normal.z);
+    const float b = a * normal.x * normal.y;
+    Onb onb = Onb(
+        vec3(1.0f + sign * a * normal.x * normal.x, sign * b, -sign * normal.x),
+        vec3(b, sign + a * normal.y * normal.y, -normal.y),
+        normal
+    );
+
+    return onb;
+}
+vec3 to_world(Onb onb, vec3 v) {
+    return v.x * onb.tangent
+         + v.y * onb.binormal
+         + v.z * onb.normal;
+}
 
 
-struct Particle {
-    vec2 position;
-    vec2 velocity;
-    vec4 color;
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+    float t_max;
+};
+Ray make_ray(vec3 origin, vec3 direction, float t_max) {
+    return Ray(origin, normalize(direction), t_max);
+}
+vec3 ray_at(Ray ray, float t) { return ray.origin + t * ray.direction; }
+vec3 offset_ray_origin(vec3 p, vec3 n) {
+    const float origin = 1.0f / 32.0f;
+    const float float_scale = 1.0f / 65536.0f;
+    const float int_scale = 256.0f;
+
+    const ivec3 of_i = ivec3(int_scale * n);
+    const vec3 p_i = vec3(
+        intBitsToFloat(floatBitsToInt(p.x) + (p.x < 0.0f ? -of_i.x : of_i.x)),
+        intBitsToFloat(floatBitsToInt(p.y) + (p.y < 0.0f ? -of_i.y : of_i.y)),
+        intBitsToFloat(floatBitsToInt(p.z) + (p.z < 0.0f ? -of_i.z : of_i.z))
+    );
+    const vec3 p_final = vec3(
+        abs(p.x) < origin ? p.x + float_scale * n.x : p_i.x,
+        abs(p.y) < origin ? p.y + float_scale * n.y : p_i.y,
+        abs(p.z) < origin ? p.z + float_scale * n.z : p_i.z
+    );
+
+    return p_final;
+}
+
+
+struct Camera {
+    vec3 position;
+    vec3 front;
+    vec3 up;
+    vec3 right;
+    float fov;
+    uvec2 resolution;
+};
+Ray generate_ray(Camera camera, vec2 p) {
+    const float fov_radians = radians(camera.fov);
+    const float aspect_ratio = float(camera.resolution.x) / float(camera.resolution.y);
+    const vec3 wi_local = vec3(
+        p.x * tan(0.5f * fov_radians) * aspect_ratio,
+        p.y * tan(0.5f * fov_radians),
+        -1.0f
+    );
+    const vec3 wi_world = normalize(
+        wi_local.x * camera.right
+        + wi_local.y * camera.up
+        - wi_local.z * camera.front
+    );
+
+    return make_ray(camera.position, wi_world, 100000.0f);
+}
+
+
+struct SurfaceHitRecord {
+    uint inst;
+    uint prim;
+    vec2 bary;
+    float time;
 };
 
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-layout(set = 0, binding = 0, std140) uniform ParameterUBO {
-    float delta_time;
-} ubo;
-layout(set = 0, binding = 1, std430) readonly buffer ParticleSSBOIn { Particle in_particles[]; };
-layout(set = 0, binding = 2, std430) buffer ParticleSSBOOut { Particle out_particles[]; };
-// layout(set = 0, binding = 3, rgba8) uniform image2D output_image; // RGBA8 格式的存储图像
-layout(set = 0, binding = 3, std430) buffer ImageOutputSSBO {
-    vec4 pixel_colors[];
-} output_pixel_buffer;
-
-const vec2 screen_size = vec2(800, 600);
-const int num_partices = 8192;
-const float PARTICLE_RADIUS = 0.05f; // 粒子半径，根据需要调整
-const float SOFT_EDGE_WIDTH = 0.005f; // 用于平滑粒子边缘
+struct Vertex {
+    vec3 position;
+    vec3 color;
+};
 
 
+struct Triangle {
+    uint t0;
+    uint t1;
+    uint t2;
+};
 
-void update_particle(uint index) {
-    if (index >= num_partices) { return; }
 
-    Particle in_particle = in_particles[index];
-    out_particles[index].position = in_particle.position
-        + in_particle.velocity.xy * ubo.delta_time;
-    out_particles[index].velocity = in_particle.velocity;
+// std140 (uniform) / std430 (SSBO)
+// Align memory with a size of 4 bytes
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0, std140) uniform UniformBuffer { uint sample_index; }; // uniform buffer(read-only)
+layout(set = 0, binding = 1, std430) readonly buffer VertexBuffer { Vertex vertices[]; }; // vertex buffer
+layout(set = 0, binding = 2, std430) readonly buffer IndexBuffer { Triangle indices[]; }; // index buffer
+layout(set = 0, binding = 3, std430) buffer PixelColors { vec4 pixel_colors[]; }; // pixel colors
+layout(set = 0, binding = 4, std430) buffer SeedBuffer { uint seed_buffer[]; }; // seed buffer
 
-    if (
-        (out_particles[index].position.x <= -1.0f)
-        || (out_particles[index].position.x >= 1.0f)
-    ) {
-        out_particles[index].velocity.x = -out_particles[index].velocity.x;
+const float pi = 3.14159265358979323846264338327950288f;
+const float inv_pi = 0.318309886183790671537767526745028724f;
+const uvec2 screen_size = uvec2(1920u, 1080u);
+const uint spp_per_dispatch = 1u;
+const uint depth_per_dispatch = 10u;
+const Camera camera = Camera(
+    vec3(-0.01f, 0.995f, 5.0f), // position
+    vec3(0.0f, 0.0f, -1.0f),    // front
+    vec3(0.0f, 1.0f, 0.0f),     // up
+    vec3(1.0f, 0.0f, 0.0f),     // right
+    27.8f,                      // fov
+    screen_size                 // resolution
+);
+
+// light data
+const vec3 light_emission = vec3(17.0f, 12.0f, 4.0f);
+const vec3 light_position = vec3(-0.24f, 1.98f, 0.16f);
+const vec3 light_u = vec3(-0.24f, 1.98f, -0.22f) - light_position;
+const vec3 light_v = vec3(0.23f, 1.98f, 0.16f) - light_position;
+const float light_area = length(cross(light_u, light_v));
+const vec3 light_normal = normalize(cross(light_u, light_v));
+
+// material data
+const vec3[] materials = vec3[](
+    vec3(0.725f, 0.710f, 0.680f), // floor
+    vec3(0.725f, 0.710f, 0.680f), // ceiling
+    vec3(0.725f, 0.710f, 0.680f), // back wall
+    vec3(0.140f, 0.450f, 0.091f), // right wall
+    vec3(0.630f, 0.065f, 0.050f), // left wall
+    vec3(0.725f, 0.710f, 0.680f), // short box
+    vec3(0.725f, 0.710f, 0.680f), // tall box
+    vec3(0.000f, 0.000f, 0.000f)  // light
+);
+
+
+uint tea(uint v0, uint v1) {
+    uint s0 = 0u;
+    for (uint n = 0u; n < 4u; n++) {
+        s0 += 0x9e3779b9u;
+        v0 += ((v1 << 4u) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5u) + 0xc8013ea4u);
+        v1 += ((v0 << 4u) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5u) + 0x7e95761eu);
     }
-
-    if (
-        (out_particles[index].position.y <= -1.0f)
-        || (out_particles[index].position.y >= 1.0f)
-    ) {
-        out_particles[index].velocity.y = -out_particles[index].velocity.y;
-    }
+    return v0;
 }
 
-// --- 2D 距离场函数 (返回点到最近粒子的有符号距离) ---
-float sdf_particles(vec2 p) {
-    float min_dist = 1e10; // 很大的初始距离
-    for (int i = 0; i < num_partices; ++i) {
-        vec2 particle_pos = out_particles[i].position; // 使用当前帧（输入）的粒子位置进行渲染
-        float dist_to_center = length(p - particle_pos);
-        float signed_distance = dist_to_center - PARTICLE_RADIUS;
-        min_dist = min(min_dist, signed_distance);
-    }
-
-    return min_dist;
+float lcg(inout uint state) {
+    state = 1664525u * state + 1013904223u;
+    return float(state & 0x00ffffffu) * (1.0f / float(0x01000000u));
 }
 
-// --- 获取粒子颜色 (返回最近粒子的颜色) ---
-vec4 get_particle_color(vec2 p) {
-    vec4 final_color = vec4(0.0);
-    float min_dist_sq = 1e10; // 最小距离的平方
+vec3 cosine_sample_hemisphere(vec2 u) {
+    const float r = sqrt(u.x);
+    const float phi = 2.0f * pi * u.y;
+    return vec3(r * cos(phi), r * sin(phi), sqrt(1.0f - u.x));
+}
 
-    for (int i = 0; i < num_partices; ++i) {
-        vec2 particle_pos = out_particles[i].position;
-        float dist_sq = dot(p - particle_pos, p - particle_pos); // 距离平方更高效
+float balanced_heuristic(float pdf_a, float pdf_b) {
+    return pdf_a / max(pdf_a + pdf_b, 1e-4f);
+}
 
-        if (dist_sq < min_dist_sq) {
-            min_dist_sq = dist_sq;
-            final_color = out_particles[i].color;
+vec3 triangle_interpolate(vec2 bary, vec3 p0, vec3 p1, vec3 p2) {
+    return (1.0f - bary.x - bary.y) * p0 + bary.x * p1 + bary.y * p2;
+}
+
+SurfaceHitRecord hit_surface(Ray ray, uint index) {
+    SurfaceHitRecord record;
+    record.inst = ~0u;
+    record.prim = ~0u;
+    record.bary = vec2(-1.0f);
+    record.time = ray.t_max;
+
+    const Triangle triangle = indices[index];
+    const vec3 A = vertices[triangle.t0].position;
+    const vec3 B = vertices[triangle.t1].position;
+    const vec3 C = vertices[triangle.t2].position;
+
+    const vec3 E1 = B - A;
+    const vec3 E2 = C - A;
+    const vec3 P = cross(ray.direction, E2);
+    const float det = dot(E1, P);
+    const float invDet = 1.0f / det;
+
+    const vec3 T = ray.origin - A;
+    const float u = dot(T, P) * invDet;
+    if (u < 0.0f || u > 1.0f) { return record; }
+
+    const vec3 Q = cross(T, E1);
+    const float v = dot(ray.direction, Q) * invDet;
+    if (v < 0.0f || u + v > 1.0f) { return record; }
+
+    const float t = dot(E2, Q) * invDet;
+    if (t < 0.0f || t > ray.t_max) { return record; }
+
+    record.prim = index;
+    record.bary = vec2(u, v);
+    record.time = t;
+
+    return record;
+}
+
+SurfaceHitRecord hit_scene(Ray ray) {
+    SurfaceHitRecord hit_record;
+    hit_record.inst = ~0u;
+    hit_record.prim = ~0u;
+    hit_record.bary = vec2(-1.0f);
+    hit_record.time = ray.t_max;
+    for (uint i = 0u; i < indices.length(); ++i) {
+        const SurfaceHitRecord current_hit_record = hit_surface(ray, i);
+        if (
+            (current_hit_record.prim != ~0u)
+            && (hit_record.prim == ~0u || current_hit_record.time < hit_record.time)
+        ) {
+            hit_record = current_hit_record;
         }
     }
-    return final_color;
+
+    return hit_record;
+}
+
+bool intersect_any(Ray ray) {
+    const SurfaceHitRecord hit_record = hit_scene(ray);
+    if (
+        (hit_record.prim == ~0u)
+        || (hit_record.prim >= uint(indices.length() - 2u))
+    ) { return false; }
+
+    return true;
+}
+
+vec3 get_color(uint index) {
+    if (0u <= index && index <= 1u) { return materials[0u]; }
+    if (2u <= index && index <= 3u) { return materials[1u]; }
+    if (4u <= index && index <= 5u) { return materials[2u]; }
+    if (6u <= index && index <= 7u) { return materials[3u]; }
+    if (8u <= index && index <= 9u) { return materials[4u]; }
+    if (10u <= index && index <= 21u) { return materials[5u]; }
+    if (22u <= index && index <= 33u) { return materials[6u]; }
+    if (34u <= index && index <= 35u) { return materials[7u]; }
+
+    return vec3(1.0f, 1.0f, 1.0f);
 }
 
 
 void main() {
-    // Part 1: 粒子更新 (在一个线程处理一个粒子)
-    // 确保你的 dispatch size 能够覆盖所有粒子，
-    // 例如，dispatch size.x = (num_particles + local_size_x - 1) / local_size_x
-    uint particle_index = gl_GlobalInvocationID.x;
-    update_particle(particle_index);
+    const uvec2 coord = gl_GlobalInvocationID.xy;
+    const uint index = coord.x + coord.y * screen_size.x;
+    if (sample_index == 0u) {
+        seed_buffer[index] = tea(coord.x, coord.y);
+        pixel_colors[index] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    uint state = seed_buffer[index];
 
-    // Part 2: 2D 粒子渲染 (在一个线程处理一个像素)
-    // 假设渲染的分辨率与 dispatch 的总大小相匹配
-    // 例如，dispatch size.x = screen_res.x / local_size_x, dispatch size.y = screen_res.y / local_size_y
-    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy); // 当前像素坐标 (0,0) 到 (res.x-1, res.y-1)
-    if ((pixel_coords.x >= screen_size.x) || (pixel_coords.y >= screen_size.y)) { return; }
+    const float rx = lcg(state);
+    const float ry = lcg(state);
+    const vec2 pixel_coord = vec2(
+        (float(coord.x) + rx) / float(screen_size.x) * 2.0f - 1.0f,
+        1.0f - (float(coord.y) + ry) / float(screen_size.y) * 2.0f
+    );
+    vec3 radiance = vec3(0.0f, 0.0f, 0.0f);
+    for (uint i = 0u; i < spp_per_dispatch; ++i) {
+        Ray ray = generate_ray(camera, pixel_coord);
+        vec3 beta = vec3(1.0f, 1.0f, 1.0f);
+        float pdf_bsdf = 0.0f;
+        for (uint depth = 0u; depth < depth_per_dispatch; ++depth) {
+            const SurfaceHitRecord hit_record = hit_scene(ray);
+            if (hit_record.prim == ~0u) { break; }
+            const Triangle triangle = indices[hit_record.prim];
+            const vec3 p0 = vertices[triangle.t0].position;
+            const vec3 p1 = vertices[triangle.t1].position;
+            const vec3 p2 = vertices[triangle.t2].position;
+            const vec3 p = triangle_interpolate(hit_record.bary, p0, p1, p2);
+            const vec3 n = normalize(cross(p1 - p0, p2 - p0));
+            const float cos_wo = dot(-ray.direction, n);
+            if (cos_wo < 1e-4f) { break; }
 
-    // 将像素坐标转换为 NDC (Normalized Device Coordinates) [-1, 1] 范围
-    vec2 uv = (vec2(pixel_coords) + 0.5f) / screen_size; // 0..1 范围
-    vec2 world_pos = uv * 2.0f - 1.0f;                       // -1..1 范围
-    float dist = sdf_particles(world_pos); // 计算当前像素点到最近粒子的 SDF
+            if (hit_record.prim >= uint(indices.length() - 2u)) {
+                if (depth == 0u) {
+                    radiance += light_emission;
+                } else {
+                    const float distance = length(p - ray.origin);
+                    const float pdf_light = (distance * distance) / (light_area * cos_wo);
+                    const float mis_weight = balanced_heuristic(pdf_bsdf, pdf_light);
+                    radiance += mis_weight * beta * light_emission;
+                }
+                break;
+            }
 
-    vec4 final_pixel_color = vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    if (dist < SOFT_EDGE_WIDTH) { // 如果在粒子内部或靠近边缘
-        vec4 particle_base_color = get_particle_color(world_pos); // 获取该位置最近的粒子颜色
-        // 使用 smoothstep 创建平滑的圆形边缘
-        float alpha = 1.0f - smoothstep(0.0f, SOFT_EDGE_WIDTH, dist);
-        final_pixel_color = vec4(particle_base_color.rgb, alpha);
+            const float ux_light = lcg(state);
+            const float uy_light = lcg(state);
+            const vec3 p_light = light_position + ux_light * light_u + uy_light * light_v;
+            const vec3 pp = offset_ray_origin(p, n);
+            const vec3 pp_light = offset_ray_origin(p_light, light_normal);
+            const float d_light = distance(pp, pp_light);
+            const vec3 wi_light = normalize(pp_light - pp);
+            const Ray shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, d_light);
+            const bool occluded = intersect_any(shadow_ray);
+            const float cos_wi_light = dot(wi_light, n);
+            const float cos_light = -dot(light_normal, wi_light);
+            const vec3 albedo = get_color(hit_record.prim);
+            if ((!occluded) && (cos_wi_light > 1e-4f) && (cos_light > 1e-4f)) {
+                const float pdf_light = (d_light * d_light) / (light_area * cos_light);
+                const float pdf_bsdf = cos_wi_light * inv_pi;
+                const float mis_weight = balanced_heuristic(pdf_light, pdf_bsdf);
+                const vec3 bsdf = albedo * inv_pi * cos_wi_light;
+                radiance += beta * bsdf * mis_weight * light_emission / max(pdf_light, 1e-4f);
+            }
+
+            const Onb onb = make_onb(n);
+            const float ux = lcg(state);
+            const float uy = lcg(state);
+            const vec3 wi_local = cosine_sample_hemisphere(vec2(ux, uy));
+            const float cos_wi = abs(wi_local.z);
+            const vec3 new_direction = to_world(onb, wi_local);
+            ray = make_ray(pp, new_direction, 100000.0f);
+            pdf_bsdf = cos_wi * inv_pi;
+            beta *= albedo;
+
+            const float l = dot(vec3(0.212671f, 0.715160f, 0.072169f), beta);
+            if (l == 0.0f) { break; }
+            const float q = max(l, 0.05f);
+            const float r = lcg(state);
+            if (r >= q) { break; }
+            beta *= 1.0f / q;
+        }
     }
 
-    // imageStore(output_image, pixel_coords, final_pixel_color); // 将计算出的颜色写入输出图像
-    uint output_index = uint(pixel_coords.y) * uint(screen_size.x) + uint(pixel_coords.x);
-    output_pixel_buffer.pixel_colors[output_index] = final_pixel_color;
+    radiance /= float(spp_per_dispatch);
+    if (any(isnan(radiance))) { radiance = vec3(0.0f, 0.0f, 0.0f); }
+    const vec3 pixel_color = vec3(clamp(radiance, 0.0f, 30.0f));
+    pixel_colors[index] = vec4(
+        mix(
+            pixel_colors[index].xyz,
+            pixel_color,
+            1.0f / (sample_index + 1.0f)
+        ),
+        1.0f
+    );
+
+    seed_buffer[index] = state;
 }
