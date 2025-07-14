@@ -749,20 +749,9 @@ private:
     }
 
     void create_vertex_buffer() {
-        for (std::size_t i { 0uz }; i < vertices.size(); ++i) {
-            Vertex vertex = vertices[i];
-            minilog::log_debug(
-                "position-{}: {}, {}, {}",
-                i,
-                vertex.position.x,
-                vertex.position.y,
-                vertex.position.z
-            );
-        }
-        vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
-
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
+        vk::DeviceSize vertex_device_size = sizeof(vertices[0uz]) * vertices.size();
         create_buffer(
             vertex_device_size,
             vk::BufferUsageFlagBits::eTransferSrc,
@@ -790,18 +779,9 @@ private:
     }
 
     void create_index_buffer() {
-        for (std::size_t i { 0uz }; i < indices.size(); ++i) {
-            Triangle triangle = indices[i];
-            minilog::log_debug(
-                "triangle-{}: {}, {}, {}",
-                i, triangle.t0, triangle.t1, triangle.t2
-            );
-        }
-
-        vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
-
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_device_memory;
+        vk::DeviceSize index_device_size = sizeof(indices[0uz]) * indices.size();
         create_buffer(
             index_device_size,
             vk::BufferUsageFlagBits::eTransferSrc,
@@ -2029,6 +2009,7 @@ private:
     }
 
     void update_uniform_buffer(std::uint32_t currentImage) {
+        minilog::log_debug("the sample index: {}", ubo.sample_index);
         memcpy(uniform_buffers_mapped[currentImage], &ubo, sizeof(ubo));
         ubo.sample_index++;
     }
