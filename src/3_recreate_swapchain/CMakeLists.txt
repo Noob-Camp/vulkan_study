@@ -9,5 +9,6 @@ target_include_directories(
 target_link_libraries(
     3_recreate_swapchain PUBLIC
     glfw
+    glm::glm
     ${Vulkan_LIBRARIES}
 )

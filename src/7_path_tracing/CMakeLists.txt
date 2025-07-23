@@ -9,5 +9,6 @@ target_include_directories(
 target_link_libraries(
     7_path_tracing PUBLIC
     glfw
+    glm::glm
     ${Vulkan_LIBRARIES}
 )

@@ -9,5 +9,6 @@ target_include_directories(
 target_link_libraries(
     6_particle_system PUBLIC
     glfw
+    glm::glm
     ${Vulkan_LIBRARIES}
 )

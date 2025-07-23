@@ -15,12 +15,9 @@ project(
     DESCRIPTION "Learn Vulkan step by step."
 )
 
-
-# GLFW
-find_package(glfw3 3.3 REQUIRED)
-
-# glm
-find_package(glm REQUIRED)
+if (UNIX AND NOT APPLE)
+    option(ENABLE_WAYLAND "Enable Wayland support in GUI and Vulkan swapchains" OFF)
+endif ()
 
 # Vulkan
 find_package(Vulkan REQUIRED)
@@ -30,16 +27,8 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-
-add_subdirectory(src/1_hello_vulkan)
-add_subdirectory(src/2_hello_render_shader)
-add_subdirectory(src/3_recreate_swapchain)
-# add_subdirectory(src/4_object_viewer)
-add_subdirectory(src/5_hello_compute_shader)
-add_subdirectory(src/6_particle_system)
-add_subdirectory(src/7_path_tracing)
-# add_subdirectory(src/8_ray_traing_in_one_weekend)
-# add_subdirectory(src/rayTracingWithComputeShader)
+add_subdirectory(thirdparty)
+add_subdirectory(src)
 
 
 
